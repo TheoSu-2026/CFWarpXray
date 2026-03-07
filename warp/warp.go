@@ -86,13 +86,25 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 	if err := ensureWarpInstalled(initLog, logInfo); err != nil {
 		return nil, fmt.Errorf("启动 warp-svc: %w", err)
 	}
-	ztCfg, err := ApplyZeroTrustConfig(logInfo)
-	if err != nil {
-		return nil, fmt.Errorf("加载 Zero Trust 配置: %w", err)
+
+	// 尝试加载 Zero Trust 配置；若未启用则走个人 WARP 模式
+	ztCfg, ztErr := ApplyZeroTrustConfig(logInfo)
+	useZeroTrust := ztErr == nil && ztCfg != nil
+
+	if useZeroTrust {
+		logInfo(fmt.Sprintf("Zero Trust 已启用：organization=%s, service_mode=%s, proxy_port=%d",
+			ztCfg.Organization, ztCfg.ServiceMode, ztCfg.ProxyPort))
+		logInfo("  → MDM 已写入 /var/lib/cloudflare-warp/mdm.xml，warp-svc 启动后将据此向 Zero Trust 注册")
+	} else {
+		logInfo("Zero Trust 未配置，使用个人 WARP 模式（" + ztErr.Error() + "）")
+		// 个人模式默认走 proxy，端口 40000
+		ztCfg = &ZeroTrustConfig{
+			ServiceMode: "proxy",
+			ProxyPort:   WarpProxyPort(),
+			AutoConnect: 1,
+		}
 	}
-	logInfo(fmt.Sprintf("Zero Trust 已启用：organization=%s, service_mode=%s, proxy_port=%d",
-		ztCfg.Organization, ztCfg.ServiceMode, ztCfg.ProxyPort))
-	logInfo("  → MDM 已写入 /var/lib/cloudflare-warp/mdm.xml，warp-svc 启动后将据此向 Zero Trust 注册")
+
 	warpSvcLog := filepath.Join(logDir, "warp-svc.log")
 	if err := StartWarpSvc(warpSvcLog); err != nil {
 		return nil, fmt.Errorf("启动 warp-svc: %w", err)
@@ -105,11 +117,19 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 	logInfo("warp-cli 可用")
 	time.Sleep(WarpCliPostReadyWait)
 
-	logInfo("[步骤] 检查 Zero Trust 设备注册状态...")
-	if err := RegisterIfNeeded(logInfo, false); err != nil {
-		return nil, fmt.Errorf("注册/检查设备: %w", err)
+	if useZeroTrust {
+		logInfo("[步骤] 检查 Zero Trust 设备注册状态...")
+		if err := RegisterIfNeeded(logInfo, false); err != nil {
+			return nil, fmt.Errorf("注册/检查设备: %w", err)
+		}
+		logInfo("[步骤] Zero Trust 注册状态检查完成")
+	} else {
+		logInfo("[步骤] 个人 WARP 模式：检查设备注册状态...")
+		if err := RegisterIfNeeded(logInfo, true); err != nil {
+			return nil, fmt.Errorf("个人 WARP 注册失败: %w", err)
+		}
+		logInfo("[步骤] 个人 WARP 注册完成")
 	}
-	logInfo("[步骤] Zero Trust 注册状态检查完成")
 
 	// 根据配置的 service_mode 设置 WARP 模式
 	var isProxyMode bool

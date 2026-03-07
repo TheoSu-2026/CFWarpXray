@@ -320,7 +320,7 @@ ZTYAML
         ;;
     *)
         cat > /tmp/zero-trust-deploy.yaml <<'ZTYAML'
-# 由 deploy.sh 生成，未启用团队模式
+# 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP
 enabled: false
 organization: ""
 auth_client_id: ""
@@ -335,7 +335,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 ${ZERO_TRUST_YAML}（enabled: false），程序启动后将因未配置 Zero Trust 退出，请编辑该文件启用并填写凭证后重启容器。"
+        echo "    已写入 ${ZERO_TRUST_YAML}（个人 WARP 模式，enabled: false）"
         ;;
 esac
 echo ""
