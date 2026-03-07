@@ -12,6 +12,11 @@ if [ -f "Dockerfile" ] && [ -f "docker-compose.yml" ]; then
     INSTALL_DIR="$(pwd)"
     echo "    使用当前目录: $INSTALL_DIR"
 else
+    if ! command -v git &>/dev/null; then
+        echo "    安装 git..."
+        sudo apt-get update -qq
+        sudo apt-get install -y git
+    fi
     echo "    将克隆仓库到: $INSTALL_DIR"
     sudo mkdir -p "$(dirname "$INSTALL_DIR")"
     if [ -d "$INSTALL_DIR/.git" ]; then
