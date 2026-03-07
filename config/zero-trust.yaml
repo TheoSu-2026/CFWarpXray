@@ -1,5 +1,5 @@
-# 由 deploy.sh 生成，未启用团队模式
-enabled: false
+# 由 deploy.sh 根据输入生成
+enabled: true
 organization: ""
 auth_client_id: ""
 auth_client_secret: ""

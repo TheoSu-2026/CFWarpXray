@@ -124,11 +124,9 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 		}
 		logInfo("[步骤] Zero Trust 注册状态检查完成")
 	} else {
-		logInfo("[步骤] 个人 WARP 模式：检查设备注册状态...")
-		if err := RegisterIfNeeded(logInfo, true); err != nil {
-			return nil, fmt.Errorf("个人 WARP 注册失败: %w", err)
-		}
-		logInfo("[步骤] 个人 WARP 注册完成")
+		// 个人 WARP 模式：registration new 会弹出浏览器登录 URL，容器无头环境无法交互。
+		// 直接跳过，让 warp-cli connect 时自动完成个人账号注册流程。
+		logInfo("[步骤] 个人 WARP 模式：跳过 registration，connect 时自动注册")
 	}
 
 	// 根据配置的 service_mode 设置 WARP 模式
@@ -659,7 +657,7 @@ func RegisterIfNeeded(logStep func(string), allowInteractive bool) error {
 	}
 	if err == nil && bytes.Contains(out, []byte("Device ID")) {
 		if logStep != nil {
-			logStep("  → 已有 Device ID，已加入 Zero Trust 组织")
+			logStep("  → 已有 Device ID，设备已注册")
 		}
 		return nil
 	}
