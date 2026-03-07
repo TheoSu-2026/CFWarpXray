@@ -43,6 +43,8 @@ if ! command -v docker &>/dev/null; then
         DOCKER_CODENAME=bookworm
     fi
     echo "    检测到 $DOCKER_DISTRO ($DOCKER_CODENAME)，使用对应 Docker 源"
+    # 先移除可能存在的错误 Docker 源，避免 apt-get update 报 404 并退出
+    sudo rm -f /etc/apt/sources.list.d/docker.list
     sudo apt-get update
     sudo apt-get install -y ca-certificates curl gnupg
     sudo install -m 0755 -d /etc/apt/keyrings
