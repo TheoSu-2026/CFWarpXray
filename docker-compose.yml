@@ -4,6 +4,9 @@ services:
     image: cfwarpxray
     container_name: cfwarpxray
     restart: unless-stopped
+    # VLESS 链接中的主机地址：由 deploy.sh 自动写入 .env，或在此写死/在 .env 中设置 WARP_XRAY_VLESS_HOST
+    environment:
+      - WARP_XRAY_VLESS_HOST=${WARP_XRAY_VLESS_HOST:-}
     dns:
       - 1.1.1.1
       - 8.8.8.8
