@@ -282,6 +282,7 @@ echo "       并取得 organization（团队名）、auth_client_id、auth_clien
 echo ""
 read -r -p "  是否使用 Zero Trust 团队模式？(y/n，默认 n): " ZT_ENABLE
 ZT_ENABLE="${ZT_ENABLE:-n}"
+ZT_ENABLE=$(printf '%s' "$ZT_ENABLE" | tr '[:upper:]' '[:lower:]')
 
 ZERO_TRUST_YAML="$INSTALL_DIR/config/zero-trust.yaml"
 if [ "$OS" != "Darwin" ] && [ "$INSTALL_DIR" != "$(pwd)" ]; then
@@ -290,8 +291,8 @@ else
     mkdir -p "$INSTALL_DIR/config"
 fi
 
-case "${ZT_ENABLE^^}" in
-    Y|YES)
+case "$ZT_ENABLE" in
+    y|yes)
         echo ""
         read -r -p "  请输入 Zero Trust 组织名 (team name)：" ZT_ORG
         read -r -p "  请输入 auth_client_id：" ZT_CID
