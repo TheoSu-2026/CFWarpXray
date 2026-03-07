@@ -2,7 +2,7 @@
 set -e
 
 # 若需指定仓库，可运行: REPO_URL=https://github.com/你的用户名/CFWarpXray.git ./deploy.sh
-REPO_URL="${REPO_URL:-https://github.com/your-username/CFWarpXray.git}"
+REPO_URL="${REPO_URL:-https://github.com/TheoSu-2026/CFWarpXray.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/CFWarpXray}"
 
 echo "[1/4] 检查环境..."
