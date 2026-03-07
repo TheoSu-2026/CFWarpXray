@@ -59,6 +59,16 @@ check_compose() {
     fi
 }
 
+# 检测本机公网 IP（用于 VLESS 链接），失败返回空
+get_public_ip() {
+    local ip
+    for url in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com"; do
+        ip=$(curl -s --connect-timeout 3 -m 5 "$url" 2>/dev/null | tr -d '\r\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+        [ -n "$ip" ] && echo "$ip" && return 0
+    done
+    return 1
+}
+
 # ── [1/5] 检查环境 ────────────────────────────────────────
 
 echo "[1/5] 检查环境..."
@@ -245,6 +255,14 @@ fi
 # ── [5/5] 启动容器 ────────────────────────────────────────
 
 echo "[5/5] 启动容器..."
+# 自动检测公网 IP 供 VLESS 链接使用，写入 .env 供 docker-compose 读取
+PUBLIC_IP=$(get_public_ip || true)
+if [ -n "$PUBLIC_IP" ]; then
+    echo "WARP_XRAY_VLESS_HOST=$PUBLIC_IP" > "$INSTALL_DIR/.env"
+    echo "    已检测公网 IP: $PUBLIC_IP（VLESS 链接将使用该地址）"
+else
+    echo "    未检测到公网 IP，可稍后在 $INSTALL_DIR/.env 中设置 WARP_XRAY_VLESS_HOST"
+fi
 "${COMPOSE_CMD[@]}" up -d
 
 # 等待容器稳定后显示状态

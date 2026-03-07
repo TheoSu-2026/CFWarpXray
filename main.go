@@ -3,10 +3,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -75,6 +78,10 @@ func main() {
 
 	logger.Stdout(logger.LevelInfo, "main",
 		fmt.Sprintf("服务就绪，代理端口 VLESS %d / HTTP %d（WARP proxy mode），日志目录 %s", xray.PortVLESS, xray.PortHTTP, logDir))
+	if host := os.Getenv("WARP_XRAY_VLESS_HOST"); host != "" {
+		vlessURL := fmt.Sprintf("vless://%s@%s:%d?encryption=none#CFWarpXray", xray.DefaultVLESSClientID, host, xray.PortVLESS)
+		logger.Stdout(logger.LevelInfo, "main", "VLESS 链接: "+vlessURL)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
