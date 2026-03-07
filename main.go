@@ -78,9 +78,11 @@ func main() {
 			xray.PortVLESS, xray.PortHTTP, xray.PortSOCKS, logDir))
 	if host := os.Getenv("WARP_XRAY_VLESS_HOST"); host != "" {
 		vlessURL := fmt.Sprintf("vless://%s@%s:%d?encryption=none#CFWarpXray", xray.DefaultVLESSClientID, host, xray.PortVLESS)
+		socks5URL := fmt.Sprintf("socks5://%s:%d", host, xray.PortSOCKS)
+		httpURL := fmt.Sprintf("http://%s:%d", host, xray.PortHTTP)
 		logger.Stdout(logger.LevelInfo, "main", "VLESS  链接: "+vlessURL)
-		logger.Stdout(logger.LevelInfo, "main", fmt.Sprintf("SOCKS5 地址: %s:%d（无认证）", host, xray.PortSOCKS))
-		logger.Stdout(logger.LevelInfo, "main", fmt.Sprintf("HTTP   地址: %s:%d", host, xray.PortHTTP))
+		logger.Stdout(logger.LevelInfo, "main", "SOCKS5 链接: "+socks5URL)
+		logger.Stdout(logger.LevelInfo, "main", "HTTP   链接: "+httpURL)
 	}
 
 	sigCh := make(chan os.Signal, 1)
