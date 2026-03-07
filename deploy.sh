@@ -316,7 +316,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 $ZERO_TRUST_YAML（enabled: true）"
+        echo "    已写入 ${ZERO_TRUST_YAML}（enabled: true）"
         ;;
     *)
         cat > /tmp/zero-trust-deploy.yaml <<'ZTYAML'
@@ -335,7 +335,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 $ZERO_TRUST_YAML（enabled: false），程序启动后将因未配置 Zero Trust 退出，请编辑该文件启用并填写凭证后重启容器。"
+        echo "    已写入 ${ZERO_TRUST_YAML}（enabled: false），程序启动后将因未配置 Zero Trust 退出，请编辑该文件启用并填写凭证后重启容器。"
         ;;
 esac
 echo ""
