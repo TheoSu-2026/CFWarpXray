@@ -74,10 +74,13 @@ func main() {
 	defer func() { _ = runner.Stop() }() // 进程退出（含 panic）时尽量关闭 Xray
 
 	logger.Stdout(logger.LevelInfo, "main",
-		fmt.Sprintf("服务就绪，代理端口 VLESS %d / HTTP %d（WARP proxy mode），日志目录 %s", xray.PortVLESS, xray.PortHTTP, logDir))
+		fmt.Sprintf("服务就绪，代理端口 VLESS %d / HTTP %d / SOCKS5 %d（WARP proxy mode），日志目录 %s",
+			xray.PortVLESS, xray.PortHTTP, xray.PortSOCKS, logDir))
 	if host := os.Getenv("WARP_XRAY_VLESS_HOST"); host != "" {
 		vlessURL := fmt.Sprintf("vless://%s@%s:%d?encryption=none#CFWarpXray", xray.DefaultVLESSClientID, host, xray.PortVLESS)
-		logger.Stdout(logger.LevelInfo, "main", "VLESS 链接: "+vlessURL)
+		logger.Stdout(logger.LevelInfo, "main", "VLESS  链接: "+vlessURL)
+		logger.Stdout(logger.LevelInfo, "main", fmt.Sprintf("SOCKS5 地址: %s:%d（无认证）", host, xray.PortSOCKS))
+		logger.Stdout(logger.LevelInfo, "main", fmt.Sprintf("HTTP   地址: %s:%d", host, xray.PortHTTP))
 	}
 
 	sigCh := make(chan os.Signal, 1)

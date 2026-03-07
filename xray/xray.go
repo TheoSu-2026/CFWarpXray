@@ -25,10 +25,12 @@ import (
 )
 
 const (
-	// PortVLESS VLESS 入站端口（原 SOCKS 端口）
+	// PortVLESS VLESS 入站端口
 	PortVLESS = 16666
-	// PortHTTP HTTP 代理端口（Xray 无单端口 mixed，故与 VLESS 分开）
+	// PortHTTP HTTP 代理端口
 	PortHTTP = 16667
+	// PortSOCKS SOCKS5 代理端口
+	PortSOCKS = 16668
 	// WarpProxyPortDefault WARP Local Proxy 默认端口
 	WarpProxyPortDefault = 40000
 	// DefaultVLESSClientID 默认 VLESS 客户端 UUID，可通过环境变量等覆盖
@@ -114,18 +116,28 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 					"network": "tcp",
 				},
 			},
-			{
-				Listen:   "0.0.0.0",
-				Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
-				Protocol: "http",
-				Tag:      "http-in",
-				Settings: map[string]interface{}{},
+		{
+			Listen:   "0.0.0.0",
+			Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
+			Protocol: "http",
+			Tag:      "http-in",
+			Settings: map[string]interface{}{},
+		},
+		{
+			Listen:   "0.0.0.0",
+			Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
+			Protocol: "socks",
+			Tag:      "socks-in",
+			Settings: map[string]interface{}{
+				"auth": "noauth",
+				"udp":  true,
 			},
 		},
-		Outbounds: []OutboundObject{
-			{
-				Protocol: "socks",
-				Tag:      "warp-proxy",
+	},
+	Outbounds: []OutboundObject{
+		{
+			Protocol: "socks",
+			Tag:      "warp-proxy",
 				Settings: map[string]interface{}{
 					"servers": []map[string]interface{}{
 						{
@@ -184,18 +196,28 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 					"network": "tcp",
 				},
 			},
-			{
-				Listen:   "0.0.0.0",
-				Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
-				Protocol: "http",
-				Tag:      "http-in",
-				Settings: map[string]interface{}{},
+		{
+			Listen:   "0.0.0.0",
+			Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
+			Protocol: "http",
+			Tag:      "http-in",
+			Settings: map[string]interface{}{},
+		},
+		{
+			Listen:   "0.0.0.0",
+			Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
+			Protocol: "socks",
+			Tag:      "socks-in",
+			Settings: map[string]interface{}{
+				"auth": "noauth",
+				"udp":  true,
 			},
 		},
-		Outbounds: []OutboundObject{
-			{
-				Protocol: "freedom",
-				Tag:      "direct",
+	},
+	Outbounds: []OutboundObject{
+		{
+			Protocol: "freedom",
+			Tag:      "direct",
 				Settings: map[string]interface{}{},
 			},
 		},
@@ -247,7 +269,7 @@ func (r *Runner) Start(config []byte) error {
 		return fmt.Errorf("xray StartInstance: %w", err)
 	}
 	r.instance = inst
-	logger.Stdout(logger.LevelInfo, componentXray, fmt.Sprintf("已启动，VLESS %d / HTTP %d", PortVLESS, PortHTTP))
+	logger.Stdout(logger.LevelInfo, componentXray, fmt.Sprintf("已启动，VLESS %d / HTTP %d / SOCKS5 %d", PortVLESS, PortHTTP, PortSOCKS))
 	return nil
 }
 
