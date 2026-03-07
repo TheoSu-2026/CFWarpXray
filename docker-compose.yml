@@ -24,6 +24,6 @@ services:
       - "16666:16666"
       - "16667:16667"
       - "16668:16668"
-    # 如需覆盖镜像内 Zero Trust 配置，取消下面注释并改成本机实际路径。
-    # volumes:
-    #   - ./config/zero-trust.yaml:/etc/cfwarpxray/zero-trust.yaml:ro
+    # deploy.sh 会引导填写 Zero Trust 并写入 ./config/zero-trust.yaml，此处挂载供容器使用
+    volumes:
+      - ./config/zero-trust.yaml:/etc/cfwarpxray/zero-trust.yaml:ro
