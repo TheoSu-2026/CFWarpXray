@@ -273,14 +273,14 @@ echo "[5/5] 启动容器..."
 # VLESS 链接主机地址：Mac 多为 NAT 无公网 IP，用局域网地址；Linux 尝试公网 IP，失败可手动设
 VLESS_HOST=""
 if [ "$OS" = "Darwin" ]; then
-    VLESS_HOST=$(get_lan_ip 2>/dev/null) || true
-    [ -n "$VLESS_HOST" ] && echo "    已检测局域网地址: $VLESS_HOST（VLESS 链接将使用该地址，供本机/内网使用）"
+    VLESS_HOST=$(get_lan_ip 2>/dev/null || echo "")
+    [ -n "${VLESS_HOST:-}" ] && echo "    已检测局域网地址: ${VLESS_HOST}（VLESS 链接将使用该地址，供本机/内网使用）"
 else
-    VLESS_HOST=$(get_public_ip 2>/dev/null) || true
-    [ -n "$VLESS_HOST" ] && echo "    已检测公网 IP: $VLESS_HOST（VLESS 链接将使用该地址）"
+    VLESS_HOST=$(get_public_ip 2>/dev/null || echo "")
+    [ -n "${VLESS_HOST:-}" ] && echo "    已检测公网 IP: ${VLESS_HOST}（VLESS 链接将使用该地址）"
 fi
-if [ -n "$VLESS_HOST" ]; then
-    echo "WARP_XRAY_VLESS_HOST=$VLESS_HOST" > "$INSTALL_DIR/.env"
+if [ -n "${VLESS_HOST:-}" ]; then
+    echo "WARP_XRAY_VLESS_HOST=${VLESS_HOST}" > "$INSTALL_DIR/.env"
 else
     echo "    未检测到可用地址，可稍后在 $INSTALL_DIR/.env 中设置 WARP_XRAY_VLESS_HOST"
 fi
