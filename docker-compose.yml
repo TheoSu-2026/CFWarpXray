@@ -1,5 +1,6 @@
 services:
   cfwarpxray:
+    build: .
     image: cfwarpxray
     container_name: cfwarpxray
     restart: unless-stopped
