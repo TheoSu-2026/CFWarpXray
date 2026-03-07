@@ -113,6 +113,7 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 
 	// 根据配置的 service_mode 设置 WARP 模式
 	var isProxyMode bool
+	var dockerCidr, dockerDev string
 	if ztCfg.ServiceMode == "proxy" {
 		if err := EnsureWarpProxyMode(logInfo); err != nil {
 			return nil, fmt.Errorf("切换 WARP Proxy 模式: %w", err)
@@ -120,6 +121,13 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 		logInfo("WARP Proxy 模式已启用")
 		isProxyMode = true
 	} else {
+		// TUN 模式：在 WARP 接管默认路由前先拿到主网卡网段，连接成功后加回该网段走 eth0 的路由
+		if cidr, dev, err := getPrimaryInterfaceSubnet(); err == nil {
+			dockerCidr, dockerDev = cidr, dev
+			logInfo("  → 已获取主网卡网段 " + cidr + " dev " + dev + "，连接后将添加回程路由")
+		} else if logInfo != nil {
+			logInfo("  → 获取主网卡网段失败（非 Docker 或无 eth0）: " + err.Error())
+		}
 		if err := EnsureWarpTunMode(logInfo); err != nil {
 			return nil, fmt.Errorf("切换 WARP TUN 模式: %w", err)
 		}
@@ -135,6 +143,14 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 		logInfo("Proxy 模式无需配置全局路由/iptables 策略")
 	} else {
 		logInfo("TUN 全局模式已接管系统默认路由")
+		if dockerCidr != "" && dockerDev != "" {
+			if err := ensureDockerBridgeRoute(logInfo, dockerCidr, dockerDev); err != nil {
+				logInfo("  → 添加 Docker 回程路由失败（入站 16666/16667 可能不可达）: " + err.Error())
+			}
+		}
+		if err := ensureWarpIPTables(logInfo); err != nil {
+			logInfo("  → 配置 WARP iptables 规则失败（TUN 出站/回包可能异常）: " + err.Error())
+		}
 	}
 	logInfo("========================================")
 	logInfo("WARP 初始化完成")
@@ -184,6 +200,184 @@ func EnsureWarpTunMode(logInfo func(string)) error {
 	}
 	if !modeOK {
 		return fmt.Errorf("设置 WARP tun mode 失败（命令兼容尝试均失败）: %s", strings.Join(modeErrs, " | "))
+	}
+	return nil
+}
+
+// getPrimaryInterfaceSubnet 在 WARP 接管默认路由之前获取主网卡（如 eth0）及其网段，
+// 用于 TUN 模式下添加「Docker/宿主机网段走 eth0」的路由，保证入站代理（16666/16667）的回包能回到宿主机。
+// 返回 cidr（如 "172.17.0.0/16"）、dev（如 "eth0"）、error。
+func getPrimaryInterfaceSubnet() (cidr, dev string, err error) {
+	// 先尝试 eth0（Docker 默认）
+	out, e := exec.Command("ip", "-4", "route", "show", "dev", "eth0").CombinedOutput()
+	if e == nil {
+		cidr = parseLinkSubnetFromRoute(string(out))
+		if cidr != "" {
+			return cidr, "eth0", nil
+		}
+	}
+	// 再尝试默认路由得到主网卡，再查该网卡网段
+	out, e = exec.Command("ip", "route", "show", "default").CombinedOutput()
+	if e != nil {
+		return "", "", fmt.Errorf("无法获取默认路由: %w", e)
+	}
+	dev = parseDevFromDefaultRoute(string(out))
+	if dev == "" {
+		return "", "", fmt.Errorf("无法从默认路由解析出 dev")
+	}
+	out, e = exec.Command("ip", "-4", "route", "show", "dev", dev).CombinedOutput()
+	if e != nil {
+		return "", "", fmt.Errorf("无法获取 dev %s 路由: %w", dev, e)
+	}
+	cidr = parseLinkSubnetFromRoute(string(out))
+	if cidr == "" {
+		return "", "", fmt.Errorf("无法解析 dev %s 的网段", dev)
+	}
+	return cidr, dev, nil
+}
+
+func parseLinkSubnetFromRoute(out string) (cidr string) {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		fields := strings.Fields(line)
+		if len(fields) >= 1 && strings.Contains(fields[0], "/") {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+func parseDevFromDefaultRoute(out string) (dev string) {
+	// default via 172.17.0.1 dev eth0 ...
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		for i := 0; i < len(fields)-1; i++ {
+			if fields[i] == "dev" {
+				return fields[i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// ensureDockerBridgeRoute 添加 subnet 经 dev 的路由，使 TUN 全局模式下访问 16666/16667 的回包走主网卡回宿主机。
+func ensureDockerBridgeRoute(logInfo func(string), cidr, dev string) error {
+	if cidr == "" || dev == "" {
+		return nil
+	}
+	// 若已有该路由则 replace 避免重复添加报错
+	out, err := exec.Command("ip", "route", "replace", cidr, "dev", dev).CombinedOutput()
+	if err != nil {
+		msg := fmt.Sprintf("添加路由 %s dev %s 失败: %v, %s", cidr, dev, err, bytes.TrimSpace(out))
+		if logInfo != nil {
+			logInfo("  → " + msg)
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	if logInfo != nil {
+		logInfo("  → 已添加路由 " + cidr + " dev " + dev + "，保证代理入站回包可达宿主机")
+	}
+	return nil
+}
+
+// detectWarpInterface 查找 WARP 创建的网卡（如 CloudflareWARP / warp）。
+func detectWarpInterface() (string, error) {
+	out, err := exec.Command("ip", "link", "show").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("获取网卡列表失败: %w", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		name := strings.TrimSuffix(fields[1], ":")
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "cloudflarewarp") || lower == "warp" || strings.HasPrefix(lower, "warp") {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("未找到 WARP 网卡")
+}
+
+func isInterfaceUp(name string) (bool, error) {
+	out, err := exec.Command("ip", "link", "show", name).CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("获取网卡 %s 状态失败: %w", name, err)
+	}
+	return strings.Contains(string(out), "UP"), nil
+}
+
+func ensureIPTablesRule(table string, checkArgs []string, addArgs []string) error {
+	checkCmd := []string{}
+	if table != "" {
+		checkCmd = append(checkCmd, "-t", table)
+	}
+	checkCmd = append(checkCmd, "-C")
+	checkCmd = append(checkCmd, checkArgs...)
+	if err := exec.Command("iptables", checkCmd...).Run(); err == nil {
+		return nil
+	}
+
+	addCmd := []string{}
+	if table != "" {
+		addCmd = append(addCmd, "-t", table)
+	}
+	addCmd = append(addCmd, "-A")
+	addCmd = append(addCmd, addArgs...)
+	if out, err := exec.Command("iptables", addCmd...).CombinedOutput(); err != nil {
+		return fmt.Errorf("iptables %v 失败: %v, %s", addCmd, err, bytes.TrimSpace(out))
+	}
+	return nil
+}
+
+// ensureWarpIPTables 配置 vh-warp 等价的 WARP 网卡 NAT/FORWARD 规则。
+// 这里使用幂等方式补规则，避免清空 Docker 现有链。
+func ensureWarpIPTables(logInfo func(string)) error {
+	warpIf, err := detectWarpInterface()
+	if err != nil {
+		return err
+	}
+	up, err := isInterfaceUp(warpIf)
+	if err != nil {
+		return err
+	}
+	if !up {
+		return fmt.Errorf("WARP 网卡 %s 存在但未就绪（未 UP）", warpIf)
+	}
+	if logInfo != nil {
+		logInfo("  → 检测到 WARP 网卡 " + warpIf + "（已就绪），开始配置 iptables")
+	}
+	rules := []struct {
+		table     string
+		checkArgs []string
+		addArgs   []string
+		desc      string
+	}{
+		{
+			table:     "nat",
+			checkArgs: []string{"POSTROUTING", "-o", warpIf, "-j", "MASQUERADE"},
+			addArgs:   []string{"POSTROUTING", "-o", warpIf, "-j", "MASQUERADE"},
+			desc:      "POSTROUTING MASQUERADE",
+		},
+		{
+			checkArgs: []string{"FORWARD", "-o", warpIf, "-j", "ACCEPT"},
+			addArgs:   []string{"FORWARD", "-o", warpIf, "-j", "ACCEPT"},
+			desc:      "FORWARD to WARP",
+		},
+		{
+			checkArgs: []string{"FORWARD", "-i", warpIf, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+			addArgs:   []string{"FORWARD", "-i", warpIf, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+			desc:      "FORWARD from WARP established",
+		},
+	}
+	for _, rule := range rules {
+		if err := ensureIPTablesRule(rule.table, rule.checkArgs, rule.addArgs); err != nil {
+			return fmt.Errorf("配置 %s 失败: %w", rule.desc, err)
+		}
+	}
+	if logInfo != nil {
+		logInfo("  → WARP iptables 规则配置完成")
 	}
 	return nil
 }
@@ -608,11 +802,23 @@ func FullRestartWarp(logDir string) error {
 		return err
 	}
 	currentMode := GetCurrentWarpMode()
+	var dockerCidr, dockerDev string
+	if currentMode != "proxy" {
+		if cidr, dev, err := getPrimaryInterfaceSubnet(); err == nil {
+			dockerCidr, dockerDev = cidr, dev
+		}
+	}
 	if err := EnsureWarpMode(currentMode, nil); err != nil {
 		return err
 	}
 	if err := ConnectWarp(ConnectPollTimeout, nil); err != nil {
 		return err
+	}
+	if currentMode != "proxy" && dockerCidr != "" && dockerDev != "" {
+		_ = ensureDockerBridgeRoute(nil, dockerCidr, dockerDev)
+	}
+	if currentMode != "proxy" {
+		_ = ensureWarpIPTables(nil)
 	}
 	return nil
 }

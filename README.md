@@ -74,12 +74,37 @@ sudo systemctl status cfwarpxray
 
 - `--cap-add=NET_ADMIN --cap-add=NET_RAW --cap-add=MKNOD`
 - `--device-cgroup-rule 'c 10:200 rwm'`
+- `--sysctl net.core.somaxconn=65535`
+- `--sysctl net.ipv4.conf.all.src_valid_mark=1`
+- `--sysctl net.ipv4.ip_forward=1`
 - `-p 16666:16666 -p 16667:16667`
 
 ```bash
 docker build -t cfwarpxray .
-docker run -d --name cfwarpxray --cap-add=NET_ADMIN --cap-add=NET_RAW --cap-add=MKNOD \
-  --device-cgroup-rule 'c 10:200 rwm' -p 16666:16666 -p 16667:16667 cfwarpxray
+docker run -d --name cfwarpxray \
+  --restart unless-stopped \
+  --dns 1.1.1.1 \
+  --dns 8.8.8.8 \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW --cap-add=MKNOD \
+  --device-cgroup-rule 'c 10:200 rwm' \
+  --sysctl net.core.somaxconn=65535 \
+  --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+  --sysctl net.ipv4.ip_forward=1 \
+  -p 16666:16666 \
+  -p 16667:16667 \
+  cfwarpxray
+```
+
+也可以直接用 Compose：
+
+```bash
+docker compose up -d --build
+```
+
+如需覆盖镜像内的 Zero Trust 配置，可挂载：
+
+```bash
+-v /path/to/zero-trust.yaml:/etc/cfwarpxray/zero-trust.yaml
 ```
 
 ## 日志与排错

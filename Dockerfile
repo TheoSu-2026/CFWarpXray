@@ -7,20 +7,20 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /cfwarpxray .
 
-# Runtime stage (replicate vh-warp: debian + cloudflare-warp, no GOST/supervisor)
-FROM debian:bookworm-slim
+# Runtime stage: Ubuntu 22.04 LTS (64-bit)
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive TZ=Asia/Shanghai
 
-RUN apt update && apt install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates procps iproute2 dbus iptables \
-    && apt clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Cloudflare WARP (same as vh-warp)
+# Install Cloudflare WARP (Ubuntu 22.04 jammy)
 RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ bookworm main" | tee /etc/apt/sources.list.d/cloudflare-client.list \
-    && apt update && apt install -y cloudflare-warp \
-    && apt clean && rm -rf /var/lib/apt/lists/*
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ jammy main" | tee /etc/apt/sources.list.d/cloudflare-client.list \
+    && apt-get update && apt-get install -y cloudflare-warp \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /var/log/warp-xray /etc/cfwarpxray /var/lib/cloudflare-warp
 
