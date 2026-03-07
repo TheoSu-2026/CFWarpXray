@@ -4,13 +4,22 @@ services:
     image: cfwarpxray
     container_name: cfwarpxray
     restart: unless-stopped
-    network_mode: host
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     cap_add:
       - NET_ADMIN
       - NET_RAW
       - MKNOD
     device_cgroup_rules:
       - "c 10:200 rwm"
+    sysctls:
+      net.core.somaxconn: "65535"
+      net.ipv4.conf.all.src_valid_mark: "1"
+      net.ipv4.ip_forward: "1"
+    ports:
+      - "16666:16666"
+      - "16667:16667"
     # 如需覆盖镜像内 Zero Trust 配置，取消下面注释并改成本机实际路径。
     # volumes:
     #   - ./config/zero-trust.yaml:/etc/cfwarpxray/zero-trust.yaml:ro
