@@ -1,98 +1,258 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # 若需指定仓库，可运行: REPO_URL=https://github.com/你的用户名/CFWarpXray.git ./deploy.sh
 REPO_URL="${REPO_URL:-https://github.com/TheoSu-2026/CFWarpXray.git}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/CFWarpXray}"
+
+# 检测操作系统（必须在 INSTALL_DIR 默认值之前）
+OS=$(uname -s)
+
+if [ "$OS" = "Darwin" ]; then
+    INSTALL_DIR="${INSTALL_DIR:-$HOME/CFWarpXray}"
+else
+    INSTALL_DIR="${INSTALL_DIR:-/opt/CFWarpXray}"
+fi
+
+# ── 工具函数 ──────────────────────────────────────────────
+
+# 获取 CPU 架构（统一为 Docker 格式）
+get_arch() {
+    case "$(uname -m)" in
+        x86_64)        echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        armv7l)        echo "armhf" ;;
+        *)             echo "$(uname -m)" ;;
+    esac
+}
+
+# 退出时清理临时文件
+TMP_JSON=""
+cleanup() {
+    [ -n "$TMP_JSON" ] && rm -f "$TMP_JSON"
+}
+trap cleanup EXIT
+
+# 在 Mac 上重启 Docker Desktop 并等待就绪
+restart_docker_mac() {
+    echo "    重启 Docker Desktop..."
+    osascript -e 'quit app "Docker"' 2>/dev/null || true
+    sleep 2
+    open -a Docker
+    echo "    等待 Docker 启动（最多 60 秒）..."
+    local i
+    for i in {1..60}; do
+        if docker info &>/dev/null 2>&1; then
+            echo "    Docker 已就绪"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "    错误：Docker 启动超时，请手动启动 Docker Desktop 后重试"
+    exit 1
+}
+
+# 检查 docker compose 插件（v2）
+check_compose() {
+    if ! docker compose version &>/dev/null 2>&1; then
+        echo "    错误：需要 docker compose 插件（v2），请更新 Docker 至最新版本"
+        exit 1
+    fi
+}
+
+# ── [1/5] 检查环境 ────────────────────────────────────────
 
 echo "[1/5] 检查环境..."
 
-# 若当前目录已有 Dockerfile 和 docker-compose.yml，则直接使用当前目录
 if [ -f "Dockerfile" ] && [ -f "docker-compose.yml" ]; then
     INSTALL_DIR="$(pwd)"
     echo "    使用当前目录: $INSTALL_DIR"
 else
+    # 安装 git（如需要）
     if ! command -v git &>/dev/null; then
         echo "    安装 git..."
-        sudo apt-get update -qq
-        sudo apt-get install -y git
+        if [ "$OS" = "Darwin" ]; then
+            if command -v brew &>/dev/null; then
+                brew install git
+            else
+                echo "    错误：未找到 Homebrew，请先安装：https://brew.sh"
+                exit 1
+            fi
+        else
+            sudo apt-get update -qq
+            sudo apt-get install -y git
+        fi
     fi
+
     echo "    将克隆仓库到: $INSTALL_DIR"
-    sudo mkdir -p "$(dirname "$INSTALL_DIR")"
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        echo "    目录已存在，拉取最新..."
-        sudo git -C "$INSTALL_DIR" pull
+    if [ "$OS" = "Darwin" ]; then
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            echo "    目录已存在，拉取最新..."
+            # set -e 下 || 后面的代码块在子 shell 中运行，需显式处理
+            if ! git -C "$INSTALL_DIR" pull; then
+                echo "    警告：git pull 失败（可能有本地修改），跳过更新，继续使用现有代码"
+            fi
+        elif [ -d "$INSTALL_DIR" ]; then
+            echo "    目录已存在但非 git 仓库，清空后重新克隆..."
+            rm -rf "$INSTALL_DIR"
+            git clone "$REPO_URL" "$INSTALL_DIR"
+        else
+            git clone "$REPO_URL" "$INSTALL_DIR"
+        fi
     else
-        sudo git clone "$REPO_URL" "$INSTALL_DIR"
+        sudo mkdir -p "$(dirname "$INSTALL_DIR")"
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            echo "    目录已存在，拉取最新..."
+            if ! sudo git -C "$INSTALL_DIR" pull; then
+                echo "    警告：git pull 失败（可能有本地修改），跳过更新，继续使用现有代码"
+            fi
+        elif [ -d "$INSTALL_DIR" ]; then
+            echo "    目录已存在但非 git 仓库，清空后重新克隆..."
+            sudo rm -rf "$INSTALL_DIR"
+            sudo git clone "$REPO_URL" "$INSTALL_DIR"
+        else
+            sudo git clone "$REPO_URL" "$INSTALL_DIR"
+        fi
     fi
 fi
+
+# ── [2/5] 检查 Docker ─────────────────────────────────────
 
 echo "[2/5] 检查 Docker..."
 if ! command -v docker &>/dev/null; then
     echo "    安装 Docker..."
-    # 根据系统自动选择 Docker 官方源：Ubuntu 用 ubuntu，其余（Debian/Raspbian 等）用 debian
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        case "$ID" in
-            ubuntu) DOCKER_DISTRO=ubuntu ;;
-            *)      DOCKER_DISTRO=debian ;;
-        esac
-        DOCKER_CODENAME="${VERSION_CODENAME:-$VERSION_ID}"
+    if [ "$OS" = "Darwin" ]; then
+        if command -v brew &>/dev/null; then
+            echo "    通过 Homebrew 安装 Docker Desktop..."
+            brew install --cask docker
+            echo "    请启动 Docker Desktop 后按回车继续..."
+            read -r
+        else
+            echo "    错误：请手动安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
+            exit 1
+        fi
     else
-        DOCKER_DISTRO=debian
-        DOCKER_CODENAME=bookworm
+        # Linux：通过 Docker 官方 apt 源安装
+        if [ -f /etc/os-release ]; then
+            # shellcheck source=/dev/null
+            . /etc/os-release
+            case "$ID" in
+                ubuntu) DOCKER_DISTRO=ubuntu ;;
+                *)      DOCKER_DISTRO=debian ;;
+            esac
+            DOCKER_CODENAME="${VERSION_CODENAME:-$VERSION_ID}"
+        else
+            DOCKER_DISTRO=debian
+            DOCKER_CODENAME=bookworm
+        fi
+        echo "    检测到 $DOCKER_DISTRO ($DOCKER_CODENAME)，使用对应 Docker 源"
+        sudo rm -f /etc/apt/sources.list.d/docker.list
+        sudo apt-get update -qq
+        sudo apt-get install -y ca-certificates curl gnupg
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL "https://download.docker.com/linux/$DOCKER_DISTRO/gpg" \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(get_arch) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/$DOCKER_DISTRO $DOCKER_CODENAME stable" \
+            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update -qq
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+            docker-buildx-plugin docker-compose-plugin
+        sudo systemctl start docker
+        sudo systemctl enable docker
     fi
-    echo "    检测到 $DOCKER_DISTRO ($DOCKER_CODENAME)，使用对应 Docker 源"
-    # 先移除可能存在的错误 Docker 源，避免 apt-get update 报 404 并退出
-    sudo rm -f /etc/apt/sources.list.d/docker.list
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl gnupg
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL "https://download.docker.com/linux/$DOCKER_DISTRO/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DOCKER_DISTRO $DOCKER_CODENAME stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    sudo systemctl start docker
-    sudo systemctl enable docker
 else
     echo "    Docker 已安装"
 fi
 
+check_compose
+
+# ── [3/5] 配置 Docker bridge 网段 ────────────────────────
+
 echo "[3/5] 配置 Docker bridge 网段..."
 # Cloudflare WARP 的 Exclude 列表包含 172.16.0.0/12，Docker 默认 bridge 172.17.0.0/16 在其中，
 # 会导致容器内 WARP connectivity checks 失败。将 bridge 改到 192.168.220.0/24 避开该范围。
-DAEMON_JSON=/etc/docker/daemon.json
+
+if [ "$OS" = "Darwin" ]; then
+    DAEMON_JSON="$HOME/.docker/daemon.json"
+else
+    DAEMON_JSON="/etc/docker/daemon.json"
+fi
+
 if [ -f "$DAEMON_JSON" ] && grep -q '"bip"' "$DAEMON_JSON"; then
     echo "    Docker bridge 网段已配置，跳过"
 else
     echo "    设置 Docker bridge 网段为 192.168.220.1/24"
     if [ -f "$DAEMON_JSON" ]; then
         # 已有 daemon.json，追加 bip 字段（用 python3 安全合并 JSON）
-        python3 - <<'PYEOF'
+        # 临时文件写到 /tmp，trap EXIT 会自动清理
+        TMP_JSON=$(mktemp /tmp/docker-daemon-XXXXXX.json)
+        # Linux 下 /etc/docker/daemon.json 为 root 所有，用 sudo cat 读取再传给 python3
+        if [ "$OS" = "Darwin" ]; then
+            python3 - "$DAEMON_JSON" "$TMP_JSON" <<'PYEOF'
 import json, sys
-path = "/etc/docker/daemon.json"
-with open(path) as f:
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
     cfg = json.load(f)
 cfg["bip"] = "192.168.220.1/24"
-with open(path, "w") as f:
+with open(dst, "w") as f:
     json.dump(cfg, f, indent=2)
 PYEOF
+            mv "$TMP_JSON" "$DAEMON_JSON"
+        else
+            sudo python3 - "$DAEMON_JSON" "$TMP_JSON" <<'PYEOF'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
+    cfg = json.load(f)
+cfg["bip"] = "192.168.220.1/24"
+with open(dst, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+            sudo mv "$TMP_JSON" "$DAEMON_JSON"
+        fi
+        TMP_JSON=""  # 已成功 mv，不需要 trap 再清理
     else
-        echo '{"bip":"192.168.220.1/24"}' | sudo tee "$DAEMON_JSON" > /dev/null
+        if [ "$OS" = "Darwin" ]; then
+            mkdir -p "$(dirname "$DAEMON_JSON")"
+            echo '{"bip":"192.168.220.1/24"}' > "$DAEMON_JSON"
+        else
+            echo '{"bip":"192.168.220.1/24"}' | sudo tee "$DAEMON_JSON" > /dev/null
+        fi
     fi
+
     echo "    重启 Docker 使网段生效..."
-    sudo systemctl restart docker
+    if [ "$OS" = "Darwin" ]; then
+        restart_docker_mac
+    else
+        sudo systemctl restart docker
+    fi
 fi
 
+# ── [4/5] 构建镜像 ────────────────────────────────────────
+
 echo "[4/5] 构建镜像..."
-sudo docker compose -f "$INSTALL_DIR/docker-compose.yml" --project-directory "$INSTALL_DIR" build
+# 用数组避免路径含空格时 word-splitting 出错
+if [ "$OS" = "Darwin" ]; then
+    COMPOSE_CMD=(docker compose -f "$INSTALL_DIR/docker-compose.yml" --project-directory "$INSTALL_DIR")
+else
+    COMPOSE_CMD=(sudo docker compose -f "$INSTALL_DIR/docker-compose.yml" --project-directory "$INSTALL_DIR")
+fi
+
+"${COMPOSE_CMD[@]}" build
+
+# ── [5/5] 启动容器 ────────────────────────────────────────
 
 echo "[5/5] 启动容器..."
-sudo docker compose -f "$INSTALL_DIR/docker-compose.yml" --project-directory "$INSTALL_DIR" up -d
+"${COMPOSE_CMD[@]}" up -d
+
+# 等待容器稳定后显示状态
+sleep 3
+"${COMPOSE_CMD[@]}" ps
 
 echo ""
 echo "部署完成。"
-echo "  - 状态: sudo docker compose -f $INSTALL_DIR/docker-compose.yml --project-directory $INSTALL_DIR ps"
-echo "  - 日志: sudo docker compose -f $INSTALL_DIR/docker-compose.yml --project-directory $INSTALL_DIR logs -f"
-echo "  - 端口: 16666, 16667"
+echo "  - 状态: ${COMPOSE_CMD[*]} ps"
+echo "  - 日志: ${COMPOSE_CMD[*]} logs -f"
+echo "  - 端口: 16666 (SOCKS5), 16667 (HTTP)"
