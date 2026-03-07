@@ -59,13 +59,28 @@ check_compose() {
     fi
 }
 
-# 检测本机公网 IP（用于 VLESS 链接），失败返回空
+# 检测本机公网 IP（用于 VLESS 链接），失败返回空（Mac 多为 NAT 无公网 IP，不依赖此函数）
 get_public_ip() {
     local ip
     for url in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com"; do
         ip=$(curl -s --connect-timeout 3 -m 5 "$url" 2>/dev/null | tr -d '\r\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
         [ -n "$ip" ] && echo "$ip" && return 0
     done
+    return 1
+}
+
+# 检测本机局域网 IP（Mac/NAT 环境用，VLESS 链接填本机 LAN 地址供内网使用）
+get_lan_ip() {
+    local ip
+    if [ "$(uname -s)" = "Darwin" ]; then
+        ip=$(ipconfig getifaddr en0 2>/dev/null) || ip=$(ipconfig getifaddr en1 2>/dev/null)
+        [ -n "$ip" ] && echo "$ip" && return 0
+        ip=$(ifconfig 2>/dev/null | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+    else
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        [ -z "$ip" ] && ip=$(ip -4 route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="src"){print $(i+1);exit}}')
+    fi
+    [ -n "$ip" ] && echo "$ip" && return 0
     return 1
 }
 
@@ -255,13 +270,19 @@ fi
 # ── [5/5] 启动容器 ────────────────────────────────────────
 
 echo "[5/5] 启动容器..."
-# 自动检测公网 IP 供 VLESS 链接使用，写入 .env 供 docker-compose 读取
-PUBLIC_IP=$(get_public_ip || true)
-if [ -n "$PUBLIC_IP" ]; then
-    echo "WARP_XRAY_VLESS_HOST=$PUBLIC_IP" > "$INSTALL_DIR/.env"
-    echo "    已检测公网 IP: $PUBLIC_IP（VLESS 链接将使用该地址）"
+# VLESS 链接主机地址：Mac 多为 NAT 无公网 IP，用局域网地址；Linux 尝试公网 IP，失败可手动设
+VLESS_HOST=""
+if [ "$OS" = "Darwin" ]; then
+    VLESS_HOST=$(get_lan_ip 2>/dev/null) || true
+    [ -n "$VLESS_HOST" ] && echo "    已检测局域网地址: $VLESS_HOST（VLESS 链接将使用该地址，供本机/内网使用）"
 else
-    echo "    未检测到公网 IP，可稍后在 $INSTALL_DIR/.env 中设置 WARP_XRAY_VLESS_HOST"
+    VLESS_HOST=$(get_public_ip 2>/dev/null) || true
+    [ -n "$VLESS_HOST" ] && echo "    已检测公网 IP: $VLESS_HOST（VLESS 链接将使用该地址）"
+fi
+if [ -n "$VLESS_HOST" ]; then
+    echo "WARP_XRAY_VLESS_HOST=$VLESS_HOST" > "$INSTALL_DIR/.env"
+else
+    echo "    未检测到可用地址，可稍后在 $INSTALL_DIR/.env 中设置 WARP_XRAY_VLESS_HOST"
 fi
 "${COMPOSE_CMD[@]}" up -d
 
