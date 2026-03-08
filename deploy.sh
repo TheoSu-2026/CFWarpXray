@@ -113,10 +113,21 @@ else
         mkdir -p "$(dirname "$INSTALL_DIR")"
         if [ -d "$INSTALL_DIR/.git" ]; then
             echo "    目录已存在，拉取最新..."
-            # set -e 下 || 后面的代码块在子 shell 中运行，需显式处理
+            DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
+            mkdir -p "$DEPLOY_BACKUP"
+            [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
+            [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
+            git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
+            rm -f "$INSTALL_DIR/.env"
             if ! git -C "$INSTALL_DIR" pull; then
-                echo "    警告：git pull 失败（可能有本地修改），跳过更新，继续使用现有代码"
+                echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
+                git -C "$INSTALL_DIR" fetch origin
+                git -C "$INSTALL_DIR" reset --hard origin/main
             fi
+            mkdir -p "$INSTALL_DIR/config"
+            [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
+            [ -f "$DEPLOY_BACKUP/.env" ] && cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
+            rm -rf "$DEPLOY_BACKUP"
         elif [ -d "$INSTALL_DIR" ]; then
             echo "    目录已存在但非 git 仓库，清空后重新克隆..."
             rm -rf "$INSTALL_DIR"
@@ -128,9 +139,21 @@ else
         sudo mkdir -p "$(dirname "$INSTALL_DIR")"
         if [ -d "$INSTALL_DIR/.git" ]; then
             echo "    目录已存在，拉取最新..."
+            DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
+            mkdir -p "$DEPLOY_BACKUP"
+            [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && sudo cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
+            [ -f "$INSTALL_DIR/.env" ] && sudo cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
+            sudo git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
+            sudo rm -f "$INSTALL_DIR/.env"
             if ! sudo git -C "$INSTALL_DIR" pull; then
-                echo "    警告：git pull 失败（可能有本地修改），跳过更新，继续使用现有代码"
+                echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
+                sudo git -C "$INSTALL_DIR" fetch origin
+                sudo git -C "$INSTALL_DIR" reset --hard origin/main
             fi
+            sudo mkdir -p "$INSTALL_DIR/config"
+            [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && sudo cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
+            [ -f "$DEPLOY_BACKUP/.env" ] && sudo cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
+            rm -rf "$DEPLOY_BACKUP"
         elif [ -d "$INSTALL_DIR" ]; then
             echo "    目录已存在但非 git 仓库，清空后重新克隆..."
             sudo rm -rf "$INSTALL_DIR"
