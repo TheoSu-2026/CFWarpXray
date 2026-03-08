@@ -389,5 +389,7 @@ sleep 3
 echo ""
 echo "部署完成。"
 echo "  - 状态: ${COMPOSE_CMD[*]} ps"
-echo "  - 日志: ${COMPOSE_CMD[*]} logs -f"
 echo "  - 端口: 16666 (VLESS), 16667 (HTTP), 16668 (SOCKS5)"
+echo ""
+echo "正在跟进容器日志（Ctrl+C 退出）..."
+"${COMPOSE_CMD[@]}" logs -f
