@@ -319,12 +319,15 @@ else
     mkdir -p "$INSTALL_DIR/config"
 fi
 
-# 读取现有的 service_mode（如果文件存在）
-EXIST_SERVICE_MODE="proxy"  # 默认值
+# 读取现有的 service_mode / proxy_port（如果文件存在），以便在重写配置时保留这些字段
+EXIST_SERVICE_MODE="proxy"   # 默认值
+EXIST_PROXY_PORT="40000"     # 默认值
 if [ -f "$ZERO_TRUST_YAML" ]; then
     EXIST_SERVICE_MODE=$(grep -E '^service_mode:[[:space:]]*"' "$ZERO_TRUST_YAML" 2>/dev/null | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
     [ -z "$EXIST_SERVICE_MODE" ] && EXIST_SERVICE_MODE="proxy"
-    echo "    检测到已存在的 Zero Trust 配置：$ZERO_TRUST_YAML（service_mode=$EXIST_SERVICE_MODE）"
+    EXIST_PROXY_PORT=$(grep -E '^proxy_port:[[:space:]]*[0-9]+' "$ZERO_TRUST_YAML" 2>/dev/null | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')
+    [ -z "$EXIST_PROXY_PORT" ] && EXIST_PROXY_PORT="40000"
+    echo "    检测到已存在的 Zero Trust 配置：$ZERO_TRUST_YAML（service_mode=$EXIST_SERVICE_MODE, proxy_port=$EXIST_PROXY_PORT）"
 fi
 
 case "$ZT_ENABLE" in
@@ -343,7 +346,7 @@ organization: "$ZT_ORG"
 auth_client_id: "$ZT_CID"
 auth_client_secret: "$ZT_SECRET"
 service_mode: "$EXIST_SERVICE_MODE"
-proxy_port: 40000
+proxy_port: $EXIST_PROXY_PORT
 auto_connect: 1
 ZTYAML
         if [ "$OS" != "Darwin" ] && [ "$INSTALL_DIR" != "$(pwd)" ]; then
@@ -356,13 +359,13 @@ ZTYAML
         ;;
     *)
         cat > /tmp/zero-trust-deploy.yaml <<ZTYAML
-# 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP（TUN 模式）
+# 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP
 enabled: false
 organization: ""
 auth_client_id: ""
 auth_client_secret: ""
-service_mode: "warp"
-proxy_port: 40000
+service_mode: "$EXIST_SERVICE_MODE"
+proxy_port: $EXIST_PROXY_PORT
 auto_connect: 1
 ZTYAML
         if [ "$OS" != "Darwin" ] && [ "$INSTALL_DIR" != "$(pwd)" ]; then
@@ -371,7 +374,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 $ZERO_TRUST_YAML（个人 WARP 模式，enabled: false，service_mode=$EXIST_SERVICE_MODE）"
+        echo "    已写入 $ZERO_TRUST_YAML（个人 WARP 模式，enabled: false，service_mode=$EXIST_SERVICE_MODE, proxy_port=$EXIST_PROXY_PORT）"
         ;;
 esac
 echo ""
