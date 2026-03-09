@@ -22,7 +22,12 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor -o /u
     && apt-get update && apt-get install -y cloudflare-warp \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /var/log/warp-xray /etc/cfwarpxray /var/lib/cloudflare-warp
+RUN mkdir -p /var/log/warp-xray /etc/cfwarpxray /var/lib/cloudflare-warp /usr/local/share/xray
+
+# Xray 路由规则需要 geoip.dat / geosite.dat（国内直连等）
+RUN GEO_URL="https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release" && \
+    curl -fsSL "${GEO_URL}/geoip.dat" -o /usr/local/share/xray/geoip.dat && \
+    curl -fsSL "${GEO_URL}/geosite.dat" -o /usr/local/share/xray/geosite.dat
 
 COPY --from=builder /cfwarpxray /usr/local/bin/cfwarpxray
 # Zero Trust 配置从 builder 阶段复制，确保任意构建上下文下镜像内都有该文件；可用 -v 挂载覆盖
