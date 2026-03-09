@@ -1,8 +1,8 @@
 # 由 deploy.sh 根据输入生成
 enabled: true
-organization: "xiaomaotaosu"
-auth_client_id: "bc4e35032fcecb2ab5910033d6dde27c.access"
-auth_client_secret: "6008c1eb8b7be23b4316a4af02a8a8317b4cdb9eb1d9b056061df7489a378bd0"
-service_mode: "proxy"
+organization: "jujuezhe"
+auth_client_id: "774a326ac8c299bc476b55db63c0926e.access"
+auth_client_secret: "f14373cea4ff34d59ca070cc4ca96321c98115aa82e6994a8099ae7d2125a2fe"
+service_mode: "warp"
 proxy_port: 40000
 auto_connect: 1
