@@ -323,6 +323,17 @@ else
     mkdir -p "$INSTALL_DIR/config"
 fi
 
+EXIST_SERVICE_MODE=""
+if [ -f "$ZERO_TRUST_YAML" ]; then
+    # 从已有配置中读出当前的 service_mode，保持用户自定义的模式不被覆盖
+    EXIST_SERVICE_MODE=$(grep -E '^service_mode:[[:space:]]*"' "$ZERO_TRUST_YAML" 2>/dev/null | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
+    [ -z "$EXIST_SERVICE_MODE" ] && EXIST_SERVICE_MODE="proxy"
+    echo "    检测到已存在的 Zero Trust 配置：$ZERO_TRUST_YAML（service_mode=$EXIST_SERVICE_MODE）"
+else
+    # 若无现有配置，则默认使用 proxy 作为初始模式
+    EXIST_SERVICE_MODE="proxy"
+fi
+
 case "$ZT_ENABLE" in
     y|yes)
         echo ""
@@ -338,7 +349,7 @@ enabled: true
 organization: "$ZT_ORG"
 auth_client_id: "$ZT_CID"
 auth_client_secret: "$ZT_SECRET"
-service_mode: "proxy"
+service_mode: "$EXIST_SERVICE_MODE"
 proxy_port: 40000
 auto_connect: 1
 ZTYAML
@@ -351,13 +362,13 @@ ZTYAML
         echo "    已写入 ${ZERO_TRUST_YAML}（enabled: true）"
         ;;
     *)
-        cat > /tmp/zero-trust-deploy.yaml <<'ZTYAML'
+        cat > /tmp/zero-trust-deploy.yaml <<ZTYAML
 # 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP
 enabled: false
 organization: ""
 auth_client_id: ""
 auth_client_secret: ""
-service_mode: "proxy"
+service_mode: "$EXIST_SERVICE_MODE"
 proxy_port: 40000
 auto_connect: 1
 ZTYAML
@@ -367,7 +378,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 ${ZERO_TRUST_YAML}（个人 WARP 模式，enabled: false）"
+        echo "    已写入 ${ZERO_TRUST_YAML}（个人 WARP 模式，enabled: false，service_mode=$EXIST_SERVICE_MODE）"
         ;;
 esac
 echo ""
