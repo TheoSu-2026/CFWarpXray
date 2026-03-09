@@ -7,6 +7,9 @@ REPO_URL="${REPO_URL:-https://github.com/TheoSu-2026/CFWarpXray.git}"
 # 检测操作系统（必须在 INSTALL_DIR 默认值之前）
 OS=$(uname -s)
 
+# Mac 上使用的 Docker 后端：desktop（Docker Desktop）或 colima
+DOCKER_BACKEND="${DOCKER_BACKEND:-desktop}"
+
 if [ "$OS" = "Darwin" ]; then
     INSTALL_DIR="${INSTALL_DIR:-$HOME/CFWarpXray}"
 else
@@ -32,12 +35,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 在 Mac 上重启 Docker Desktop 并等待就绪
+# 在 Mac 上重启 Docker 并等待就绪（支持 Docker Desktop 与 Colima）
 restart_docker_mac() {
-    echo "    重启 Docker Desktop..."
-    osascript -e 'quit app "Docker"' 2>/dev/null || true
-    sleep 2
-    open -a Docker
+    if [ "${DOCKER_BACKEND:-desktop}" = "colima" ]; then
+        echo "    重启 Colima..."
+        colima stop 2>/dev/null || true
+        sleep 2
+        colima start
+    else
+        echo "    重启 Docker Desktop..."
+        osascript -e 'quit app "Docker"' 2>/dev/null || true
+        sleep 2
+        open -a Docker
+    fi
     echo "    等待 Docker 启动（最多 60 秒）..."
     local i
     for i in {1..60}; do
@@ -47,7 +57,7 @@ restart_docker_mac() {
         fi
         sleep 1
     done
-    echo "    错误：Docker 启动超时，请手动启动 Docker Desktop 后重试"
+    echo "    错误：Docker 启动超时，请手动启动后重试"
     exit 1
 }
 
@@ -171,10 +181,40 @@ if ! command -v docker &>/dev/null; then
     echo "    安装 Docker..."
     if [ "$OS" = "Darwin" ]; then
         if command -v brew &>/dev/null; then
-            echo "    通过 Homebrew 安装 Docker Desktop..."
-            brew install --cask docker
-            echo "    请启动 Docker Desktop 后按回车继续..."
-            read -r
+            echo "    尝试通过 Homebrew 安装 Docker Desktop..."
+            if brew install --cask docker; then
+                echo "    请启动 Docker Desktop 后按回车继续..."
+                read -r
+            else
+                echo ""
+                echo "    Homebrew 安装失败，尝试阿里云镜像..."
+                DOCKER_ARCH=$(get_arch)
+                DOCKER_DMG=$(mktemp /tmp/Docker-XXXXXX.dmg)
+                trap 'rm -f "$DOCKER_DMG"; cleanup' EXIT
+                DOCKER_MIRROR="https://mirrors.aliyun.com/docker-toolbox/mac/docker-for-mac/stable/${DOCKER_ARCH}/Docker.dmg"
+                if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 10 --max-time 600; then
+                    echo "    从阿里云镜像下载成功，正在安装..."
+                    (
+                        hdiutil attach -nobrowse -quiet "$DOCKER_DMG"
+                        trap 'hdiutil detach /Volumes/Docker -quiet 2>/dev/null || true' EXIT
+                        if [ ! -d /Volumes/Docker/Docker.app ]; then
+                            echo "    错误：DMG 内未找到 Docker.app，镜像文件可能已变更"
+                            exit 1
+                        fi
+                        cp -R /Volumes/Docker/Docker.app /Applications/
+                    )
+                    rm -f "$DOCKER_DMG"
+                    trap cleanup EXIT
+                    echo "    安装完成，请启动 Docker Desktop 后按回车继续..."
+                    read -r
+                else
+                    echo ""
+                    echo "    错误：阿里云镜像下载也失败。"
+                    echo "    请手动安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
+                    echo "    或从阿里云镜像下载：$DOCKER_MIRROR"
+                    exit 1
+                fi
+            fi
         else
             echo "    错误：请手动安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
             exit 1
