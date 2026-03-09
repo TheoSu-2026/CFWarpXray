@@ -188,21 +188,48 @@ if ! command -v docker &>/dev/null; then
             else
                 echo ""
                 echo "    Homebrew 安装失败，尝试阿里云镜像..."
+                if ! command -v aria2c &>/dev/null; then
+                    echo "    安装 aria2 以支持多线程下载..."
+                    brew install aria2 || true
+                fi
                 DOCKER_ARCH=$(get_arch)
                 DOCKER_DMG=$(mktemp /tmp/Docker-XXXXXX.dmg)
                 trap 'rm -f "$DOCKER_DMG"; cleanup' EXIT
                 DOCKER_MIRROR="https://mirrors.aliyun.com/docker-toolbox/mac/docker-for-mac/stable/${DOCKER_ARCH}/Docker.dmg"
                 DOCKER_DOWNLOAD_OK=false
-                for _retry in 1 2 3; do
-                    rm -f "$DOCKER_DMG"
-                    if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 15 --max-time 900 --retry 2 --retry-delay 3; then
-                        if [ -s "$DOCKER_DMG" ]; then
+                if command -v aria2c &>/dev/null; then
+                    echo "    使用 aria2 多线程下载（支持断点续传）..."
+                    for _retry in 1 2 3; do
+                        rm -f "$DOCKER_DMG" "${DOCKER_DMG}.aria2" 2>/dev/null
+                        if aria2c -x 16 -s 16 -c -d "$(dirname "$DOCKER_DMG")" -o "$(basename "$DOCKER_DMG")" \
+                            --connect-timeout=15 --timeout=900 --max-tries=3 --retry-wait=5 \
+                            "$DOCKER_MIRROR" 2>/dev/null && [ -s "$DOCKER_DMG" ]; then
                             DOCKER_DOWNLOAD_OK=true
                             break
                         fi
+                        [ "$_retry" -lt 3 ] && echo "    下载中断，正在重试 ($_retry/3)..."
+                    done
+                fi
+                if [ "$DOCKER_DOWNLOAD_OK" != true ]; then
+                    echo "    使用 curl 下载..."
+                    for _retry in 1 2 3; do
+                        rm -f "$DOCKER_DMG"
+                        if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 15 --max-time 900 --retry 2 --retry-delay 3; then
+                            if [ -s "$DOCKER_DMG" ]; then
+                                DOCKER_DOWNLOAD_OK=true
+                                break
+                            fi
+                        fi
+                        [ "$_retry" -lt 3 ] && echo "    curl 下载中断，正在重试 ($_retry/3)..."
+                    done
+                fi
+                if [ "$DOCKER_DOWNLOAD_OK" != true ] && command -v wget &>/dev/null; then
+                    echo "    尝试使用 wget 下载..."
+                    rm -f "$DOCKER_DMG"
+                    if wget -O "$DOCKER_DMG" "$DOCKER_MIRROR" --timeout=15 --tries=3 && [ -s "$DOCKER_DMG" ]; then
+                        DOCKER_DOWNLOAD_OK=true
                     fi
-                    [ "$_retry" -lt 3 ] && echo "    下载中断，正在重试 ($_retry/3)..."
-                done
+                fi
                 if [ "$DOCKER_DOWNLOAD_OK" = true ]; then
                     echo "    从阿里云镜像下载成功，正在安装..."
                     (
@@ -221,8 +248,9 @@ if ! command -v docker &>/dev/null; then
                 else
                     echo ""
                     echo "    错误：阿里云镜像下载也失败。"
-                    echo "    请手动安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
-                    echo "    或从阿里云镜像下载：$DOCKER_MIRROR"
+                    echo ""
+                    echo "    请用浏览器手动下载："
+                    echo "    $DOCKER_MIRROR"
                     exit 1
                 fi
             fi
