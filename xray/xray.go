@@ -104,7 +104,10 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Routing: map[string]interface{}{
-			"domainStrategy": "IPIfNonMatch",
+			// UseIP：所有出站一律在 Xray 内先用内置 DNS 解析为 IP，
+			// 再把 IP 作为目标发给后端（包括 socks 出站到本机 WARP Local Proxy），
+			// 确保发给 WARP 的只包含 IP，不再透传域名。
+			"domainStrategy": "UseIP",
 			"rules": []map[string]interface{}{
 				// {"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},   // 私有直连（暂时注释，让私有也走代理）
 				{"type": "field", "ip": []string{"geoip:cn"}, "outboundTag": "direct"},         // 国内直连
@@ -204,7 +207,7 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 			},
 		},
 		Routing: map[string]interface{}{
-			"domainStrategy": "IPIfNonMatch",
+			"domainStrategy": "UseIP",
 		},
 		Inbounds: []InboundObject{
 			{
