@@ -25,9 +25,17 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor -o /u
 RUN mkdir -p /var/log/warp-xray /etc/cfwarpxray /var/lib/cloudflare-warp /usr/local/share/xray
 
 # Xray 路由规则需要 geoip.dat / geosite.dat（国内直连等）
-RUN GEO_URL="https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release" && \
-    curl -fsSL "${GEO_URL}/geoip.dat" -o /usr/local/share/xray/geoip.dat && \
-    curl -fsSL "${GEO_URL}/geosite.dat" -o /usr/local/share/xray/geosite.dat
+ARG GEO_URLS="https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release https://ghproxy.com/https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release"
+RUN set -eux; \
+    for GEO_URL in $GEO_URLS; do \
+      echo "Trying: $GEO_URL"; \
+      if curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 10 --max-time 120 "${GEO_URL}/geoip.dat" -o /usr/local/share/xray/geoip.dat && \
+         curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors --connect-timeout 10 --max-time 120 "${GEO_URL}/geosite.dat" -o /usr/local/share/xray/geosite.dat; then \
+        exit 0; \
+      fi; \
+    done; \
+    echo "Failed to download geoip.dat/geosite.dat from all GEO_URLS=$GEO_URLS" >&2; \
+    exit 1
 
 COPY --from=builder /cfwarpxray /usr/local/bin/cfwarpxray
 # Zero Trust 配置从 builder 阶段复制，确保任意构建上下文下镜像内都有该文件；可用 -v 挂载覆盖
