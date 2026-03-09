@@ -99,79 +99,74 @@ get_lan_ip() {
 
 echo "[1/5] 检查环境..."
 
-if [ -f "Dockerfile" ] && [ -f "docker-compose.yml" ]; then
-    INSTALL_DIR="$(pwd)"
-    echo "    使用当前目录: $INSTALL_DIR"
-else
-    # 安装 git（如需要）
-    if ! command -v git &>/dev/null; then
-        echo "    安装 git..."
-        if [ "$OS" = "Darwin" ]; then
-            if command -v brew &>/dev/null; then
-                brew install git
-            else
-                echo "    错误：未找到 Homebrew，请先安装：https://brew.sh"
-                exit 1
-            fi
-        else
-            sudo apt-get update -qq
-            sudo apt-get install -y git
-        fi
-    fi
-
-    echo "    将克隆仓库到: $INSTALL_DIR"
+# 安装 git（如需要）
+if ! command -v git &>/dev/null; then
+    echo "    安装 git..."
     if [ "$OS" = "Darwin" ]; then
-        mkdir -p "$(dirname "$INSTALL_DIR")"
-        if [ -d "$INSTALL_DIR/.git" ]; then
-            echo "    目录已存在，拉取最新..."
-            DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
-            mkdir -p "$DEPLOY_BACKUP"
-            [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
-            [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
-            git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
-            rm -f "$INSTALL_DIR/.env"
-            if ! git -C "$INSTALL_DIR" pull; then
-                echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
-                git -C "$INSTALL_DIR" fetch origin
-                git -C "$INSTALL_DIR" reset --hard origin/main
-            fi
-            mkdir -p "$INSTALL_DIR/config"
-            [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
-            [ -f "$DEPLOY_BACKUP/.env" ] && cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
-            rm -rf "$DEPLOY_BACKUP"
-        elif [ -d "$INSTALL_DIR" ]; then
-            echo "    目录已存在但非 git 仓库，清空后重新克隆..."
-            rm -rf "$INSTALL_DIR"
-            git clone "$REPO_URL" "$INSTALL_DIR"
+        if command -v brew &>/dev/null; then
+            brew install git
         else
-            git clone "$REPO_URL" "$INSTALL_DIR"
+            echo "    错误：未找到 Homebrew，请先安装：https://brew.sh"
+            exit 1
         fi
     else
-        sudo mkdir -p "$(dirname "$INSTALL_DIR")"
-        if [ -d "$INSTALL_DIR/.git" ]; then
-            echo "    目录已存在，拉取最新..."
-            DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
-            mkdir -p "$DEPLOY_BACKUP"
-            [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && sudo cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
-            [ -f "$INSTALL_DIR/.env" ] && sudo cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
-            sudo git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
-            sudo rm -f "$INSTALL_DIR/.env"
-            if ! sudo git -C "$INSTALL_DIR" pull; then
-                echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
-                sudo git -C "$INSTALL_DIR" fetch origin
-                sudo git -C "$INSTALL_DIR" reset --hard origin/main
-            fi
-            sudo mkdir -p "$INSTALL_DIR/config"
-            [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && sudo cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
-            [ -f "$DEPLOY_BACKUP/.env" ] && sudo cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
-            rm -rf "$DEPLOY_BACKUP"
-        elif [ -d "$INSTALL_DIR" ]; then
-            echo "    目录已存在但非 git 仓库，清空后重新克隆..."
-            sudo rm -rf "$INSTALL_DIR"
-            sudo git clone "$REPO_URL" "$INSTALL_DIR"
-        else
-            sudo git clone "$REPO_URL" "$INSTALL_DIR"
+        sudo apt-get update -qq
+        sudo apt-get install -y git
+    fi
+fi
+
+echo "    将从远程仓库同步到: $INSTALL_DIR"
+if [ "$OS" = "Darwin" ]; then
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        echo "    目录已存在，拉取最新..."
+        DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
+        mkdir -p "$DEPLOY_BACKUP"
+        [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
+        [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
+        git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
+        rm -f "$INSTALL_DIR/.env"
+        if ! git -C "$INSTALL_DIR" pull; then
+            echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
+            git -C "$INSTALL_DIR" fetch origin
+            git -C "$INSTALL_DIR" reset --hard origin/main
         fi
+        mkdir -p "$INSTALL_DIR/config"
+        [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
+        [ -f "$DEPLOY_BACKUP/.env" ] && cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
+        rm -rf "$DEPLOY_BACKUP"
+    elif [ -d "$INSTALL_DIR" ]; then
+        echo "    目录已存在但非 git 仓库，清空后重新克隆..."
+        rm -rf "$INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
+    else
+        git clone "$REPO_URL" "$INSTALL_DIR"
+    fi
+else
+    sudo mkdir -p "$(dirname "$INSTALL_DIR")"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        echo "    目录已存在，拉取最新..."
+        DEPLOY_BACKUP="/tmp/cfwarpxray-deploy-$$"
+        mkdir -p "$DEPLOY_BACKUP"
+        [ -f "$INSTALL_DIR/config/zero-trust.yaml" ] && sudo cp "$INSTALL_DIR/config/zero-trust.yaml" "$DEPLOY_BACKUP"
+        [ -f "$INSTALL_DIR/.env" ] && sudo cp "$INSTALL_DIR/.env" "$DEPLOY_BACKUP"
+        sudo git -C "$INSTALL_DIR" checkout -- config/zero-trust.yaml 2>/dev/null || true
+        sudo rm -f "$INSTALL_DIR/.env"
+        if ! sudo git -C "$INSTALL_DIR" pull; then
+            echo "    警告：git pull 失败，尝试 git reset --hard origin/main"
+            sudo git -C "$INSTALL_DIR" fetch origin
+            sudo git -C "$INSTALL_DIR" reset --hard origin/main
+        fi
+        sudo mkdir -p "$INSTALL_DIR/config"
+        [ -f "$DEPLOY_BACKUP/zero-trust.yaml" ] && sudo cp "$DEPLOY_BACKUP/zero-trust.yaml" "$INSTALL_DIR/config/zero-trust.yaml"
+        [ -f "$DEPLOY_BACKUP/.env" ] && sudo cp "$DEPLOY_BACKUP/.env" "$INSTALL_DIR/.env"
+        rm -rf "$DEPLOY_BACKUP"
+    elif [ -d "$INSTALL_DIR" ]; then
+        echo "    目录已存在但非 git 仓库，清空后重新克隆..."
+        sudo rm -rf "$INSTALL_DIR"
+        sudo git clone "$REPO_URL" "$INSTALL_DIR"
+    else
+        sudo git clone "$REPO_URL" "$INSTALL_DIR"
     fi
 fi
 
