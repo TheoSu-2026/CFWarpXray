@@ -63,6 +63,30 @@ func loadZeroTrustConfig() (*ZeroTrustConfig, string, error) {
 	return &cfg, path, nil
 }
 
+// LoadServiceModeFromConfig 仅用于决定 WARP 运行模式（proxy / warp），
+// 不关心 enabled / 组织 / 凭证是否完整。
+// - 若能读取并解析 zero-trust.yaml，则优先使用其中的 service_mode / proxy_port；
+// - 若配置缺失或无效，则回退到 proxy 模式和默认端口。
+func LoadServiceModeFromConfig() (mode string, proxyPort int) {
+	raw, _, err := readZeroTrustConfigFile()
+	if err != nil {
+		return "proxy", WarpProxyPort()
+	}
+	var cfg ZeroTrustConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return "proxy", WarpProxyPort()
+	}
+	m := strings.TrimSpace(cfg.ServiceMode)
+	if m == "" {
+		m = "proxy"
+	}
+	port := cfg.ProxyPort
+	if port <= 0 || port > 65535 {
+		port = WarpProxyPort()
+	}
+	return m, port
+}
+
 func readZeroTrustConfigFile() ([]byte, string, error) {
 	envPath := strings.TrimSpace(getEnv(zeroTrustConfigEnv))
 	if envPath != "" {

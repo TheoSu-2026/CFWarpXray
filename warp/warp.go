@@ -87,7 +87,7 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 		return nil, fmt.Errorf("启动 warp-svc: %w", err)
 	}
 
-	// 尝试加载 Zero Trust 配置；若未启用则走个人 WARP 模式
+	// 尝试加载 Zero Trust 配置；若未启用则走个人 WARP 模式，但 WARP 运行模式仍按 zero-trust.yaml 中的 service_mode 决定。
 	ztCfg, ztErr := ApplyZeroTrustConfig(logInfo)
 	useZeroTrust := ztErr == nil && ztCfg != nil
 
@@ -96,11 +96,13 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 			ztCfg.Organization, ztCfg.ServiceMode, ztCfg.ProxyPort))
 		logInfo("  → MDM 已写入 /var/lib/cloudflare-warp/mdm.xml，warp-svc 启动后将据此向 Zero Trust 注册")
 	} else {
-		logInfo("Zero Trust 未配置，使用个人 WARP 模式（" + ztErr.Error() + "）")
-		// 个人模式默认走 proxy，端口 40000
+		// 个人 WARP 模式：不做 Zero Trust 注册，但仍然根据 zero-trust.yaml 中的 service_mode/proxy_port
+		// 决定运行在 Proxy 还是 TUN 模式。
+		mode, port := LoadServiceModeFromConfig()
+		logInfo("Zero Trust 未配置/未启用，使用个人 WARP 模式，但 WARP 模式按 zero-trust.yaml 中的 service_mode=" + mode)
 		ztCfg = &ZeroTrustConfig{
-			ServiceMode: "proxy",
-			ProxyPort:   WarpProxyPort(),
+			ServiceMode: mode,
+			ProxyPort:   port,
 			AutoConnect: 1,
 		}
 	}
