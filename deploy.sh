@@ -192,7 +192,18 @@ if ! command -v docker &>/dev/null; then
                 DOCKER_DMG=$(mktemp /tmp/Docker-XXXXXX.dmg)
                 trap 'rm -f "$DOCKER_DMG"; cleanup' EXIT
                 DOCKER_MIRROR="https://mirrors.aliyun.com/docker-toolbox/mac/docker-for-mac/stable/${DOCKER_ARCH}/Docker.dmg"
-                if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 10 --max-time 600; then
+                DOCKER_DOWNLOAD_OK=false
+                for _retry in 1 2 3; do
+                    rm -f "$DOCKER_DMG"
+                    if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 15 --max-time 900 --retry 2 --retry-delay 3; then
+                        if [ -s "$DOCKER_DMG" ]; then
+                            DOCKER_DOWNLOAD_OK=true
+                            break
+                        fi
+                    fi
+                    [ "$_retry" -lt 3 ] && echo "    下载中断，正在重试 ($_retry/3)..."
+                done
+                if [ "$DOCKER_DOWNLOAD_OK" = true ]; then
                     echo "    从阿里云镜像下载成功，正在安装..."
                     (
                         hdiutil attach -nobrowse -quiet "$DOCKER_DMG"
