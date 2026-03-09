@@ -126,9 +126,8 @@ func InitWarpWithConfig(logDir string) (*ZeroTrustConfig, error) {
 		}
 		logInfo("[步骤] Zero Trust 注册状态检查完成")
 	} else {
-		// 个人 WARP 模式：registration new 会弹出浏览器登录 URL，容器无头环境无法交互。
-		// 直接跳过，让 warp-cli connect 时自动完成个人账号注册流程。
-		logInfo("[步骤] 个人 WARP 模式：跳过 registration，connect 时自动注册")
+		logInfo("[步骤] 个人 WARP 模式：检查/初始化 registration")
+		EnsurePersonalRegistration(logInfo)
 	}
 
 	// 根据配置的 service_mode 设置 WARP 模式
@@ -692,6 +691,26 @@ func RegisterIfNeeded(logStep func(string), allowInteractive bool) error {
 		lastErr = fmt.Errorf("warp-cli registration new: %w（输出: %s）", err, bytes.TrimSpace(out))
 	}
 	return lastErr
+}
+
+// EnsurePersonalRegistration 在个人 WARP 模式下确保至少完成一次注册。
+// 某些环境下 daemon 启动后会报 "Registration Missing due to: Daemon Startup"，
+// 这里直接执行一次非交互式 registration new 以完成初始化。
+func EnsurePersonalRegistration(logStep func(string)) {
+	if logStep != nil {
+		logStep("  → 执行 warp-cli registration show（个人模式）")
+	}
+	out, err := exec.Command("warp-cli", "--accept-tos", "registration", "show").CombinedOutput()
+	if err == nil && bytes.Contains(out, []byte("Device ID")) {
+		if logStep != nil {
+			logStep("  → 已有 Device ID（个人模式），跳过 registration new")
+		}
+		return
+	}
+	if logStep != nil {
+		logStep("  → 当前无 Device ID（个人模式），执行 warp-cli registration new")
+	}
+	_ = exec.Command("warp-cli", "--accept-tos", "registration", "new").Run()
 }
 
 func firstLine(b []byte) string {
