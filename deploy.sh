@@ -356,12 +356,12 @@ ZTYAML
         ;;
     *)
         cat > /tmp/zero-trust-deploy.yaml <<ZTYAML
-# 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP
+# 由 deploy.sh 生成，未启用 Zero Trust 团队模式，使用个人 WARP（TUN 模式）
 enabled: false
 organization: ""
 auth_client_id: ""
 auth_client_secret: ""
-service_mode: "$EXIST_SERVICE_MODE"
+service_mode: "warp"
 proxy_port: 40000
 auto_connect: 1
 ZTYAML
