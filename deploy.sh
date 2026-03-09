@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 # 若需指定仓库，可运行: REPO_URL=https://github.com/你的用户名/CFWarpXray.git ./deploy.sh
 REPO_URL="${REPO_URL:-https://github.com/TheoSu-2026/CFWarpXray.git}"
