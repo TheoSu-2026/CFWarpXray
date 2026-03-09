@@ -80,7 +80,8 @@ type OutboundObject struct {
 }
 
 // BuildConfigProxy 生成 Xray JSON 配置：0.0.0.0:16666 VLESS、0.0.0.0:16667 HTTP，
-// 出站走本机 WARP SOCKS5，并启用 DoH DNS（降低本机 DNS 污染影响）。
+// 出站走本机 WARP SOCKS5，并启用 DoH DNS（国内外分流，降低污染与证书错误）。
+// 路由：国内直连、私有直连，国外走代理。
 // logLevel 非空时设置 log.loglevel（如 "warning"）；
 // logDir 非空时将 access/error 日志写入 logDir/xray-access.log、logDir/xray-error.log。
 func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error) {
@@ -88,13 +89,30 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 		DNS: map[string]interface{}{
 			"queryStrategy": "UseIPv4",
 			"servers": []interface{}{
-				map[string]interface{}{"address": "https+local://1.1.1.1/dns-query"},
-				map[string]interface{}{"address": "https+local://8.8.8.8/dns-query"},
-				"localhost",
+				// 国内域名用国内 DoH，解析正确且不易污染
+				map[string]interface{}{
+					"address": "https://dns.alidns.com/dns-query",
+					"domains": []string{"geosite:cn"},
+				},
+				map[string]interface{}{
+					"address": "https://doh.pub/dns-query",
+					"domains": []string{"geosite:cn"},
+				},
+				// 国外域名用海外 DoH，避免污染导致证书错误
+				"https://1.1.1.1/dns-query",
+				"https://8.8.8.8/dns-query",
 			},
 		},
 		Routing: map[string]interface{}{
 			"domainStrategy": "IPIfNonMatch",
+			"rules": []map[string]interface{}{
+				// {"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},   // 私有直连（暂时注释，让私有也走代理）
+				{"type": "field", "ip": []string{"geoip:cn"}, "outboundTag": "direct"},         // 国内直连
+				{"type": "field", "domain": []string{"geosite:cn"}, "outboundTag": "direct"},   // 国内网站直连
+				// 常见 DNS IP 直连，避免客户端把 UDP 53/853 经 SOCKS 转发被拒（code 7）
+				{"type": "field", "ip": []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"}, "outboundTag": "direct"},
+				{"type": "field", "network": "tcp,udp", "outboundTag": "warp-proxy"},           // 国外走代理
+			},
 		},
 		Inbounds: []InboundObject{
 			{
@@ -136,18 +154,23 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 	},
 	Outbounds: []OutboundObject{
 		{
+			Protocol: "freedom",
+			Tag:      "direct",
+			Settings: map[string]interface{}{},
+		},
+		{
 			Protocol: "socks",
 			Tag:      "warp-proxy",
-				Settings: map[string]interface{}{
-					"servers": []map[string]interface{}{
-						{
-							"address": "127.0.0.1",
-							"port":    warpProxyPort,
-						},
+			Settings: map[string]interface{}{
+				"servers": []map[string]interface{}{
+					{
+						"address": "127.0.0.1",
+						"port":    warpProxyPort,
 					},
 				},
 			},
 		},
+	},
 	}
 	if logLevel != "" || logDir != "" {
 		cfg.Log = &LogConfig{Loglevel: logLevel}
@@ -168,9 +191,16 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 		DNS: map[string]interface{}{
 			"queryStrategy": "UseIPv4",
 			"servers": []interface{}{
-				map[string]interface{}{"address": "https+local://1.1.1.1/dns-query"},
-				map[string]interface{}{"address": "https+local://8.8.8.8/dns-query"},
-				"localhost",
+				map[string]interface{}{
+					"address": "https://dns.alidns.com/dns-query",
+					"domains": []string{"geosite:cn"},
+				},
+				map[string]interface{}{
+					"address": "https://doh.pub/dns-query",
+					"domains": []string{"geosite:cn"},
+				},
+				"https://1.1.1.1/dns-query",
+				"https://8.8.8.8/dns-query",
 			},
 		},
 		Routing: map[string]interface{}{
