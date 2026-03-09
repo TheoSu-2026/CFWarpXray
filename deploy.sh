@@ -178,86 +178,14 @@ fi
 
 echo "[2/5] 检查 Docker..."
 if ! command -v docker &>/dev/null; then
-    echo "    安装 Docker..."
     if [ "$OS" = "Darwin" ]; then
-        if command -v brew &>/dev/null; then
-            echo "    尝试通过 Homebrew 安装 Docker Desktop..."
-            if brew install --cask docker; then
-                echo "    请启动 Docker Desktop 后按回车继续..."
-                read -r
-            else
-                echo ""
-                echo "    Homebrew 安装失败，尝试阿里云镜像..."
-                if ! command -v aria2c &>/dev/null; then
-                    echo "    安装 aria2 以支持多线程下载..."
-                    brew install aria2 || true
-                fi
-                DOCKER_ARCH=$(get_arch)
-                DOCKER_DMG=$(mktemp /tmp/Docker-XXXXXX.dmg)
-                trap 'rm -f "$DOCKER_DMG"; cleanup' EXIT
-                DOCKER_MIRROR="https://mirrors.aliyun.com/docker-toolbox/mac/docker-for-mac/stable/${DOCKER_ARCH}/Docker.dmg"
-                DOCKER_DOWNLOAD_OK=false
-                if command -v aria2c &>/dev/null; then
-                    echo "    使用 aria2 多线程下载（支持断点续传）..."
-                    for _retry in 1 2 3; do
-                        rm -f "$DOCKER_DMG" "${DOCKER_DMG}.aria2" 2>/dev/null
-                        if aria2c -x 16 -s 16 -c -d "$(dirname "$DOCKER_DMG")" -o "$(basename "$DOCKER_DMG")" \
-                            --connect-timeout=15 --timeout=900 --max-tries=3 --retry-wait=5 \
-                            "$DOCKER_MIRROR" 2>/dev/null && [ -s "$DOCKER_DMG" ]; then
-                            DOCKER_DOWNLOAD_OK=true
-                            break
-                        fi
-                        [ "$_retry" -lt 3 ] && echo "    下载中断，正在重试 ($_retry/3)..."
-                    done
-                fi
-                if [ "$DOCKER_DOWNLOAD_OK" != true ]; then
-                    echo "    使用 curl 下载..."
-                    for _retry in 1 2 3; do
-                        rm -f "$DOCKER_DMG"
-                        if curl -fsSL -o "$DOCKER_DMG" "$DOCKER_MIRROR" --connect-timeout 15 --max-time 900 --retry 2 --retry-delay 3; then
-                            if [ -s "$DOCKER_DMG" ]; then
-                                DOCKER_DOWNLOAD_OK=true
-                                break
-                            fi
-                        fi
-                        [ "$_retry" -lt 3 ] && echo "    curl 下载中断，正在重试 ($_retry/3)..."
-                    done
-                fi
-                if [ "$DOCKER_DOWNLOAD_OK" != true ] && command -v wget &>/dev/null; then
-                    echo "    尝试使用 wget 下载..."
-                    rm -f "$DOCKER_DMG"
-                    if wget -O "$DOCKER_DMG" "$DOCKER_MIRROR" --timeout=15 --tries=3 && [ -s "$DOCKER_DMG" ]; then
-                        DOCKER_DOWNLOAD_OK=true
-                    fi
-                fi
-                if [ "$DOCKER_DOWNLOAD_OK" = true ]; then
-                    echo "    从阿里云镜像下载成功，正在安装..."
-                    (
-                        hdiutil attach -nobrowse -quiet "$DOCKER_DMG"
-                        trap 'hdiutil detach /Volumes/Docker -quiet 2>/dev/null || true' EXIT
-                        if [ ! -d /Volumes/Docker/Docker.app ]; then
-                            echo "    错误：DMG 内未找到 Docker.app，镜像文件可能已变更"
-                            exit 1
-                        fi
-                        cp -R /Volumes/Docker/Docker.app /Applications/
-                    )
-                    rm -f "$DOCKER_DMG"
-                    trap cleanup EXIT
-                    echo "    安装完成，请启动 Docker Desktop 后按回车继续..."
-                    read -r
-                else
-                    echo ""
-                    echo "    错误：阿里云镜像下载也失败。"
-                    echo ""
-                    echo "    请用浏览器手动下载："
-                    echo "    $DOCKER_MIRROR"
-                    exit 1
-                fi
-            fi
-        else
-            echo "    错误：请手动安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
-            exit 1
-        fi
+        echo ""
+        echo "    未检测到 Docker，请先手动安装 Docker Desktop。"
+        echo ""
+        echo "    官网下载：https://www.docker.com/products/docker-desktop/"
+        echo ""
+        echo "    安装并启动 Docker Desktop 后，重新运行本脚本即可。"
+        exit 1
     else
         # Linux：通过 Docker 官方 apt 源安装
         if [ -f /etc/os-release ]; then
