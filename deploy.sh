@@ -223,71 +223,9 @@ fi
 
 check_compose
 
-# ── [3/5] 配置 Docker bridge 网段 ────────────────────────
+# ── [3/5] 构建镜像 ────────────────────────────────────────
 
-echo "[3/5] 配置 Docker bridge 网段..."
-# Cloudflare WARP 的 Exclude 列表包含 172.16.0.0/12，Docker 默认 bridge 172.17.0.0/16 在其中，
-# 会导致容器内 WARP connectivity checks 失败。将 bridge 改到 192.168.220.0/24 避开该范围。
-
-if [ "$OS" = "Darwin" ]; then
-    DAEMON_JSON="$HOME/.docker/daemon.json"
-else
-    DAEMON_JSON="/etc/docker/daemon.json"
-fi
-
-if [ -f "$DAEMON_JSON" ] && grep -q '"bip"' "$DAEMON_JSON"; then
-    echo "    Docker bridge 网段已配置，跳过"
-else
-    echo "    设置 Docker bridge 网段为 192.168.220.1/24"
-    if [ -f "$DAEMON_JSON" ]; then
-        # 已有 daemon.json，追加 bip 字段（用 python3 安全合并 JSON）
-        # 临时文件写到 /tmp，trap EXIT 会自动清理
-        TMP_JSON=$(mktemp /tmp/docker-daemon-XXXXXX.json)
-        # Linux 下 /etc/docker/daemon.json 为 root 所有，用 sudo cat 读取再传给 python3
-        if [ "$OS" = "Darwin" ]; then
-            python3 - "$DAEMON_JSON" "$TMP_JSON" <<'PYEOF'
-import json, sys
-src, dst = sys.argv[1], sys.argv[2]
-with open(src) as f:
-    cfg = json.load(f)
-cfg["bip"] = "192.168.220.1/24"
-with open(dst, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-            mv "$TMP_JSON" "$DAEMON_JSON"
-        else
-            sudo python3 - "$DAEMON_JSON" "$TMP_JSON" <<'PYEOF'
-import json, sys
-src, dst = sys.argv[1], sys.argv[2]
-with open(src) as f:
-    cfg = json.load(f)
-cfg["bip"] = "192.168.220.1/24"
-with open(dst, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-            sudo mv "$TMP_JSON" "$DAEMON_JSON"
-        fi
-        TMP_JSON=""  # 已成功 mv，不需要 trap 再清理
-    else
-        if [ "$OS" = "Darwin" ]; then
-            mkdir -p "$(dirname "$DAEMON_JSON")"
-            echo '{"bip":"192.168.220.1/24"}' > "$DAEMON_JSON"
-        else
-            echo '{"bip":"192.168.220.1/24"}' | sudo tee "$DAEMON_JSON" > /dev/null
-        fi
-    fi
-
-    echo "    重启 Docker 使网段生效..."
-    if [ "$OS" = "Darwin" ]; then
-        restart_docker_mac
-    else
-        sudo systemctl restart docker
-    fi
-fi
-
-# ── [4/5] 构建镜像 ────────────────────────────────────────
-
-echo "[4/5] 构建镜像..."
+echo "[3/5] 构建镜像..."
 # 用数组避免路径含空格时 word-splitting 出错
 if [ "$OS" = "Darwin" ]; then
     COMPOSE_CMD=(docker compose -f "$INSTALL_DIR/docker-compose.yml" --project-directory "$INSTALL_DIR")
@@ -297,9 +235,9 @@ fi
 
 "${COMPOSE_CMD[@]}" build
 
-# ── [4.5/5] Zero Trust 配置引导 ─────────────────────────────
+# ── [4/5] Zero Trust 配置引导 ─────────────────────────────
 
-echo "[4.5/5] Zero Trust 配置..."
+echo "[4/5] Zero Trust 配置..."
 echo ""
 echo "  是否使用 Zero Trust 团队模式？"
 echo "  - 使用团队模式时，程序将用您提供的凭证连接 Cloudflare WARP，并受 Zero Trust 策略管控。"
