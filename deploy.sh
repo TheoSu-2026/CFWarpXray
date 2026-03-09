@@ -316,6 +316,7 @@ echo ""
 ZT_ENABLE="${ZT_ENABLE:-n}"
 ZT_ENABLE=$(printf '%s' "$ZT_ENABLE" | tr '[:upper:]' '[:lower:]')
 
+# 定义配置文件路径
 ZERO_TRUST_YAML="${INSTALL_DIR}/config/zero-trust.yaml"
 if [ "$OS" != "Darwin" ] && [ "$INSTALL_DIR" != "$(pwd)" ]; then
     sudo mkdir -p "$INSTALL_DIR/config"
@@ -323,15 +324,12 @@ else
     mkdir -p "$INSTALL_DIR/config"
 fi
 
-EXIST_SERVICE_MODE=""
-if [ -f "${ZERO_TRUST_YAML:-}" ]; then
-    # 从已有配置中读出当前的 service_mode，保持用户自定义的模式不被覆盖
-    EXIST_SERVICE_MODE=$(grep -E '^service_mode:[[:space:]]*"' "${ZERO_TRUST_YAML:-}" 2>/dev/null | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
+# 读取现有的 service_mode（如果文件存在）
+EXIST_SERVICE_MODE="proxy"  # 默认值
+if [ -f "$ZERO_TRUST_YAML" ]; then
+    EXIST_SERVICE_MODE=$(grep -E '^service_mode:[[:space:]]*"' "$ZERO_TRUST_YAML" 2>/dev/null | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
     [ -z "$EXIST_SERVICE_MODE" ] && EXIST_SERVICE_MODE="proxy"
-    echo "    检测到已存在的 Zero Trust 配置：${ZERO_TRUST_YAML:-}（service_mode=$EXIST_SERVICE_MODE）"
-else
-    # 若无现有配置，则默认使用 proxy 作为初始模式
-    EXIST_SERVICE_MODE="proxy"
+    echo "    检测到已存在的 Zero Trust 配置：$ZERO_TRUST_YAML（service_mode=$EXIST_SERVICE_MODE）"
 fi
 
 case "$ZT_ENABLE" in
@@ -359,7 +357,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 ${ZERO_TRUST_YAML}（enabled: true）"
+        echo "    已写入 $ZERO_TRUST_YAML（enabled: true）"
         ;;
     *)
         cat > /tmp/zero-trust-deploy.yaml <<ZTYAML
@@ -378,7 +376,7 @@ ZTYAML
             cp /tmp/zero-trust-deploy.yaml "$ZERO_TRUST_YAML"
         fi
         rm -f /tmp/zero-trust-deploy.yaml
-        echo "    已写入 ${ZERO_TRUST_YAML}（个人 WARP 模式，enabled: false，service_mode=$EXIST_SERVICE_MODE）"
+        echo "    已写入 $ZERO_TRUST_YAML（个人 WARP 模式，enabled: false，service_mode=$EXIST_SERVICE_MODE）"
         ;;
 esac
 echo ""
