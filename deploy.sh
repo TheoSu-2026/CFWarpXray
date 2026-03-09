@@ -11,7 +11,8 @@ OS=$(uname -s)
 DOCKER_BACKEND="${DOCKER_BACKEND:-desktop}"
 
 if [ "$OS" = "Darwin" ]; then
-    INSTALL_DIR="${INSTALL_DIR:-$HOME/CFWarpXray}"
+    # 默认拉取到用户文档目录：~/Documents/CFWarpXray
+    INSTALL_DIR="${INSTALL_DIR:-$HOME/Documents/CFWarpXray}"
 else
     INSTALL_DIR="${INSTALL_DIR:-/opt/CFWarpXray}"
 fi
