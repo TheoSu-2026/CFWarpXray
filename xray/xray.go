@@ -104,10 +104,10 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Routing: map[string]interface{}{
-			// UseIP：所有出站一律在 Xray 内先用内置 DNS 解析为 IP，
-			// 再把 IP 作为目标发给后端（包括 socks 出站到本机 WARP Local Proxy），
-			// 确保发给 WARP 的只包含 IP，不再透传域名。
-			"domainStrategy": "UseIP",
+			// IPOnDemand：在开始匹配前立即将域名解析为 IP 再进行匹配，
+			// 进来的所有域名在路由阶段都会被解析成 IP 后再参与规则判断，
+			// 配合 freedom 出站的 UseIP，尽量确保后端（包括 127.0.0.1:40000）看到的都是 IP。
+			"domainStrategy": "IPOnDemand",
 			"rules": []map[string]interface{}{
 				// {"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},   // 私有直连（暂时注释，让私有也走代理）
 				{"type": "field", "ip": []string{"geoip:cn"}, "outboundTag": "direct"},         // 国内直连
@@ -159,7 +159,11 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 		{
 			Protocol: "freedom",
 			Tag:      "direct",
-			Settings: map[string]interface{}{},
+			Settings: map[string]interface{}{
+				// UseIP：freedom 出站时将目标域名再次解析为 IP 后发出，
+				// 和上面的 IPOnDemand 搭配，确保出口用 IP 形式连远端。
+				"domainStrategy": "UseIP",
+			},
 		},
 		{
 			Protocol: "socks",
@@ -207,7 +211,7 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 			},
 		},
 		Routing: map[string]interface{}{
-			"domainStrategy": "UseIP",
+			"domainStrategy": "IPOnDemand",
 		},
 		Inbounds: []InboundObject{
 			{
@@ -251,9 +255,11 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 		{
 			Protocol: "freedom",
 			Tag:      "direct",
-				Settings: map[string]interface{}{},
+			Settings: map[string]interface{}{
+				"domainStrategy": "UseIP",
 			},
 		},
+	},
 	}
 	if logLevel != "" || logDir != "" {
 		cfg.Log = &LogConfig{Loglevel: logLevel}
