@@ -89,13 +89,13 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 		DNS: map[string]interface{}{
 			"queryStrategy": "UseIPv4",
 			"servers": []interface{}{
-				// 国内域名用国内 DoH，解析正确且不易污染
+				// 国内域名用国内 DoH，解析正确且不易污染（直接使用 IP，避免 DoH 服务器域名自解析）
 				map[string]interface{}{
-					"address": "https://dns.alidns.com/dns-query",
+					"address": "https://223.5.5.5/dns-query",
 					"domains": []string{"geosite:cn"},
 				},
 				map[string]interface{}{
-					"address": "https://doh.pub/dns-query",
+					"address": "https://1.12.12.12/dns-query",
 					"domains": []string{"geosite:cn"},
 				},
 				// 国外域名用海外 DoH，避免污染导致证书错误
@@ -199,11 +199,11 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 			"queryStrategy": "UseIPv4",
 			"servers": []interface{}{
 				map[string]interface{}{
-					"address": "https://dns.alidns.com/dns-query",
+					"address": "https://223.5.5.5/dns-query",
 					"domains": []string{"geosite:cn"},
 				},
 				map[string]interface{}{
-					"address": "https://doh.pub/dns-query",
+					"address": "https://1.12.12.12/dns-query",
 					"domains": []string{"geosite:cn"},
 				},
 				"https://1.1.1.1/dns-query",
