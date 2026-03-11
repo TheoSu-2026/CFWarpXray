@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"CFWarpXray/internal/logger"
+
 	"github.com/xtls/xray-core/core"
 
 	// 注册 JSON 配置加载器，否则 StartInstance("json", config) 会报 Unable to load config in json
@@ -72,11 +73,12 @@ type Sniffing struct {
 	DestOverride []string `json:"destOverride,omitempty"`
 }
 
-// OutboundObject 对应 Xray 出站（protocol、tag、settings）。
+// OutboundObject 对应 Xray 出站（protocol、tag、settings、proxySettings 等）。
 type OutboundObject struct {
-	Protocol string      `json:"protocol"`
-	Tag      string      `json:"tag,omitempty"`
-	Settings interface{} `json:"settings,omitempty"`
+	Protocol      string      `json:"protocol"`
+	Tag           string      `json:"tag,omitempty"`
+	Settings      interface{} `json:"settings,omitempty"`
+	ProxySettings interface{} `json:"proxySettings,omitempty"`
 }
 
 // BuildConfigProxy 生成 Xray JSON 配置：0.0.0.0:16666 VLESS、0.0.0.0:16667 HTTP，
@@ -104,17 +106,22 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Routing: map[string]interface{}{
-			// IPOnDemand：在开始匹配前立即将域名解析为 IP 再进行匹配，
-			// 进来的所有域名在路由阶段都会被解析成 IP 后再参与规则判断，
-			// 配合 freedom 出站的 UseIP，尽量确保后端（包括 127.0.0.1:40000）看到的都是 IP。
+			// IPOnDemand：在路由匹配前先把域名解析成 IP，
+			// 后面所有规则看到的目标尽量都是 IP 形式。
 			"domainStrategy": "IPOnDemand",
 			"rules": []map[string]interface{}{
-				// {"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},   // 私有直连（暂时注释，让私有也走代理）
-				{"type": "field", "ip": []string{"geoip:cn"}, "outboundTag": "direct"},         // 国内直连
-				{"type": "field", "domain": []string{"geosite:cn"}, "outboundTag": "direct"},   // 国内网站直连
-				// 常见 DNS IP 直连，避免客户端把 UDP 53/853 经 SOCKS 转发被拒（code 7）
-				{"type": "field", "ip": []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"}, "outboundTag": "direct"},
-				{"type": "field", "network": "tcp,udp", "outboundTag": "warp-proxy"},           // 国外走代理
+				// 国内 IP / 域名直接从本机出，不走 WARP。
+				{
+					"type":        "field",
+					"ip":          []string{"geoip:cn"},
+					"outboundTag": "direct",
+				},
+				{
+					"type":        "field",
+					"domain":      []string{"geosite:cn"},
+					"outboundTag": "direct",
+				},
+				// 其余走默认的 direct（UseIP + proxySettings → WARP）。
 			},
 		},
 		Inbounds: []InboundObject{
@@ -137,47 +144,58 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 					"network": "tcp",
 				},
 			},
-		{
-			Listen:   "0.0.0.0",
-			Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
-			Protocol: "http",
-			Tag:      "http-in",
-			Settings: map[string]interface{}{},
-		},
-		{
-			Listen:   "0.0.0.0",
-			Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
-			Protocol: "socks",
-			Tag:      "socks-in",
-			Settings: map[string]interface{}{
-				"auth": "noauth",
-				"udp":  true,
+			{
+				Listen:   "0.0.0.0",
+				Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
+				Protocol: "http",
+				Tag:      "http-in",
+				Settings: map[string]interface{}{},
+			},
+			{
+				Listen:   "0.0.0.0",
+				Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
+				Protocol: "socks",
+				Tag:      "socks-in",
+				Settings: map[string]interface{}{
+					"auth": "noauth",
+					"udp":  true,
+				},
 			},
 		},
-	},
-	Outbounds: []OutboundObject{
-		{
-			Protocol: "freedom",
-			Tag:      "direct",
-			Settings: map[string]interface{}{
-				// UseIP：freedom 出站时将目标域名再次解析为 IP 后发出，
-				// 和上面的 IPOnDemand 搭配，确保出口用 IP 形式连远端。
-				"domainStrategy": "UseIP",
+		Outbounds: []OutboundObject{
+			// 1）国外等默认流量：先在 freedom 里用 IP 出站，再通过 proxySettings 交给 WARP socks。
+			{
+				Protocol: "freedom",
+				Tag:      "direct",
+				Settings: map[string]interface{}{
+					"domainStrategy": "UseIP",
+				},
+				ProxySettings: map[string]interface{}{
+					"tag": "warp-proxy",
+				},
 			},
-		},
-		{
-			Protocol: "socks",
-			Tag:      "warp-proxy",
-			Settings: map[string]interface{}{
-				"servers": []map[string]interface{}{
-					{
-						"address": "127.0.0.1",
-						"port":    warpProxyPort,
+			// 2）国内专用直连：真正不走 WARP，直接从当前机器出网。
+			//{
+			//	Protocol: "freedom",
+			//	Tag:      "direct-cn",
+			//	Settings: map[string]interface{}{
+			//		"domainStrategy": "UseIP",
+			//	},
+			//},
+			// 3）本机的 WARP Local Proxy（SOCKS5），只认 IP。
+			{
+				Protocol: "socks",
+				Tag:      "warp-proxy",
+				Settings: map[string]interface{}{
+					"servers": []map[string]interface{}{
+						{
+							"address": "127.0.0.1",
+							"port":    warpProxyPort,
+						},
 					},
 				},
 			},
 		},
-	},
 	}
 	if logLevel != "" || logDir != "" {
 		cfg.Log = &LogConfig{Loglevel: logLevel}
@@ -233,33 +251,33 @@ func BuildConfigDirect(logLevel, logDir string) ([]byte, error) {
 					"network": "tcp",
 				},
 			},
-		{
-			Listen:   "0.0.0.0",
-			Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
-			Protocol: "http",
-			Tag:      "http-in",
-			Settings: map[string]interface{}{},
-		},
-		{
-			Listen:   "0.0.0.0",
-			Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
-			Protocol: "socks",
-			Tag:      "socks-in",
-			Settings: map[string]interface{}{
-				"auth": "noauth",
-				"udp":  true,
+			{
+				Listen:   "0.0.0.0",
+				Port:     json.Number(fmt.Sprintf("%d", PortHTTP)),
+				Protocol: "http",
+				Tag:      "http-in",
+				Settings: map[string]interface{}{},
+			},
+			{
+				Listen:   "0.0.0.0",
+				Port:     json.Number(fmt.Sprintf("%d", PortSOCKS)),
+				Protocol: "socks",
+				Tag:      "socks-in",
+				Settings: map[string]interface{}{
+					"auth": "noauth",
+					"udp":  true,
+				},
 			},
 		},
-	},
-	Outbounds: []OutboundObject{
-		{
-			Protocol: "freedom",
-			Tag:      "direct",
-			Settings: map[string]interface{}{
-				"domainStrategy": "UseIP",
+		Outbounds: []OutboundObject{
+			{
+				Protocol: "freedom",
+				Tag:      "direct",
+				Settings: map[string]interface{}{
+					"domainStrategy": "UseIP",
+				},
 			},
 		},
-	},
 	}
 	if logLevel != "" || logDir != "" {
 		cfg.Log = &LogConfig{Loglevel: logLevel}
