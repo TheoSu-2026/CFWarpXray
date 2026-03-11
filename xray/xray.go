@@ -90,7 +90,7 @@ type OutboundObject struct {
 func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error) {
 	cfg := Config{
 		DNS: map[string]interface{}{
-			"queryStrategy": "UseIP",
+			"queryStrategy": "UseIPv4",
 			"servers": []interface{}{
 				// 国内域名用国内 DoH，解析正确且不易污染（直接使用 IP，避免 DoH 服务器域名自解析）
 				map[string]interface{}{
