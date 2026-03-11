@@ -75,10 +75,11 @@ type Sniffing struct {
 
 // OutboundObject 对应 Xray 出站（protocol、tag、settings、proxySettings 等）。
 type OutboundObject struct {
-	Protocol      string      `json:"protocol"`
-	Tag           string      `json:"tag,omitempty"`
-	Settings      interface{} `json:"settings,omitempty"`
-	ProxySettings interface{} `json:"proxySettings,omitempty"`
+	Protocol       string      `json:"protocol"`
+	Tag            string      `json:"tag,omitempty"`
+	Settings       interface{} `json:"settings,omitempty"`
+	ProxySettings  interface{} `json:"proxySettings,omitempty"`
+	TargetStrategy string      `json:"targetStrategy,omitempty"`
 }
 
 // BuildConfigProxy 生成 Xray JSON 配置：0.0.0.0:16666 VLESS、0.0.0.0:16667 HTTP，
@@ -89,7 +90,7 @@ type OutboundObject struct {
 func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error) {
 	cfg := Config{
 		DNS: map[string]interface{}{
-			"queryStrategy": "UseIPv4",
+			"queryStrategy": "UseIP",
 			"servers": []interface{}{
 				// 国内域名用国内 DoH，解析正确且不易污染（直接使用 IP，避免 DoH 服务器域名自解析）
 				map[string]interface{}{
@@ -106,22 +107,21 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Routing: map[string]interface{}{
-			// IPOnDemand：在路由匹配前先把域名解析成 IP，
-			// 后面所有规则看到的目标尽量都是 IP 形式。
-			"domainStrategy": "IPOnDemand",
+			"domainStrategy": "IPIfNonMatch",
 			"rules": []map[string]interface{}{
 				// 国内 IP / 域名直接从本机出，不走 WARP。
 				{
-					"type":        "field",
 					"ip":          []string{"geoip:cn"},
 					"outboundTag": "direct",
 				},
 				{
-					"type":        "field",
 					"domain":      []string{"geosite:cn"},
 					"outboundTag": "direct",
 				},
-				// 其余走默认的 direct（UseIP + proxySettings → WARP）。
+				{
+					"network":     "tcp,udp",
+					"outboundTag": "proxy",
+				},
 			},
 		},
 		Inbounds: []InboundObject{
@@ -163,29 +163,15 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Outbounds: []OutboundObject{
-			// 1）国外等默认流量：先在 freedom 里用 IP 出站，再通过 proxySettings 交给 WARP socks。
+			// 直连
 			{
 				Protocol: "freedom",
 				Tag:      "direct",
-				Settings: map[string]interface{}{
-					"domainStrategy": "UseIP",
-				},
-				ProxySettings: map[string]interface{}{
-					"tag": "warp-proxy",
-				},
 			},
-			// 2）国内专用直连：真正不走 WARP，直接从当前机器出网。
-			//{
-			//	Protocol: "freedom",
-			//	Tag:      "direct-cn",
-			//	Settings: map[string]interface{}{
-			//		"domainStrategy": "UseIP",
-			//	},
-			//},
 			// 3）本机的 WARP Local Proxy（SOCKS5），只认 IP。
 			{
 				Protocol: "socks",
-				Tag:      "warp-proxy",
+				Tag:      "proxy",
 				Settings: map[string]interface{}{
 					"servers": []map[string]interface{}{
 						{
@@ -194,6 +180,7 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 						},
 					},
 				},
+				TargetStrategy: "UseIP",
 			},
 		},
 	}
