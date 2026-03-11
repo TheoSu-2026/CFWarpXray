@@ -94,12 +94,14 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			"servers": []interface{}{
 				// 国内域名用国内 DoH，解析正确且不易污染（直接使用 IP，避免 DoH 服务器域名自解析）
 				map[string]interface{}{
-					"address": "https://223.5.5.5/dns-query",
-					"domains": []string{"geosite:cn"},
+					"address":      "https://223.5.5.5/dns-query",
+					"domains":      []string{"geosite:cn"},
+					"skipFallback": true,
 				},
 				map[string]interface{}{
-					"address": "https://1.12.12.12/dns-query",
-					"domains": []string{"geosite:cn"},
+					"address":      "https://1.12.12.12/dns-query",
+					"domains":      []string{"geosite:cn"},
+					"skipFallback": true,
 				},
 				// 国外域名用海外 DoH，避免污染导致证书错误
 				"https://1.1.1.1/dns-query",
