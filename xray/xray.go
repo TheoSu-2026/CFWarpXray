@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	PortVLESSWS = 16665
 	// PortVLESS VLESS 入站端口
 	PortVLESS = 16666
 	// PortHTTP HTTP 代理端口
@@ -35,7 +36,7 @@ const (
 	// WarpProxyPortDefault WARP Local Proxy 默认端口
 	WarpProxyPortDefault = 40000
 	// DefaultVLESSClientID 默认 VLESS 客户端 UUID，可通过环境变量等覆盖
-	DefaultVLESSClientID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	DefaultVLESSClientID = "de690a4d-2f18-461d-9381-a95780287b92"
 )
 
 const componentXray = "xray"
@@ -127,6 +128,28 @@ func BuildConfigProxy(logLevel, logDir string, warpProxyPort int) ([]byte, error
 			},
 		},
 		Inbounds: []InboundObject{
+			{
+				Listen:   "0.0.0.0",
+				Port:     json.Number(fmt.Sprintf("%d", PortVLESSWS)),
+				Protocol: "vless",
+				Tag:      "vless-ws",
+				Settings: map[string]interface{}{
+					"clients": []map[string]interface{}{
+						{
+							"id":    DefaultVLESSClientID,
+							"level": 0,
+							"email": "main@local",
+						},
+					},
+					"decryption": "none",
+				},
+				StreamSettings: map[string]interface{}{
+					"network": "ws",
+					"wsSettings": map[string]interface{}{
+						"path": "/taosu", // 设置一个路径，比如 /my-path
+					},
+				},
+			},
 			{
 				Listen:   "0.0.0.0",
 				Port:     json.Number(fmt.Sprintf("%d", PortVLESS)),
