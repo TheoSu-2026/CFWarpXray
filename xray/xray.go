@@ -1,17 +1,15 @@
 // Package xray 在进程内通过 xray-core 提供 SOCKS5/HTTP 代理（替代 vh-warp 中的 GOST），
-// 出口走本机 WARP Local Proxy，避免全局默认路由被 WARP 接管带来的回包抖动。
+// 出口走本机 WARP Local Proxy，避免全局默认路由被 WARP 接管带来的回包抖动123。
 package xray
 
 import (
+	"CFWarpXray/internal/logger"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sync"
 
-	"CFWarpXray/internal/logger"
-
 	"github.com/xtls/xray-core/core"
-
 	// 注册 JSON 配置加载器，否则 StartInstance("json", config) 会报 Unable to load config in json
 	_ "github.com/xtls/xray-core/main/json"
 	// 注册 DNS/SOCKS/HTTP/freedom 等协议，供 JSON 配置解析
